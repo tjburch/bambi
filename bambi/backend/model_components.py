@@ -2,7 +2,14 @@ import numpy as np
 
 from pytensor import tensor as pt
 
-from bambi.backend.terms import CommonTerm, GroupSpecificTerm, HSGPTerm, InterceptTerm, ResponseTerm
+from bambi.backend.terms import (
+    CommonTerm,
+    GroupSpecificTerm,
+    HSGPTerm,
+    InterceptTerm,
+    MissingDataTerm,
+    ResponseTerm,
+)
 from bambi.backend.utils import get_distribution_from_prior
 from bambi.families.multivariate import MultivariateFamily
 from bambi.families.univariate import Categorical, Cumulative, StoppingRatio
@@ -53,6 +60,7 @@ class DistributionalComponent:
             self.build_intercept(bmb_model)
             self.build_offsets()
             self.build_common_terms(pymc_backend, bmb_model)
+            self.build_missing_data_terms(pymc_backend, bmb_model)
             self.build_hsgp_terms(pymc_backend)
             self.build_group_specific_terms(pymc_backend, bmb_model)
 
@@ -108,6 +116,27 @@ class DistributionalComponent:
 
             # Add term to linear predictor
             self.output += pt.dot(data, coefs)
+
+    def build_missing_data_terms(self, pymc_backend, bmb_model):
+        """Add terms with missing data imputation to the PyMC model.
+
+        For predictors wrapped with mi(), this creates imputation models for the missing
+        values and adds the imputed predictor contribution to the linear predictor.
+        """
+        for term in self.component.missing_data_terms.values():
+            missing_term = MissingDataTerm(term)
+
+            # Add coords
+            for name, values in missing_term.coords.items():
+                if name not in pymc_backend.model.coords:
+                    pymc_backend.model.add_coords({name: values})
+
+            # Build the imputation model and get coefficient
+            coef, imputed_data = missing_term.build(bmb_model, pymc_backend)
+
+            # Add to the linear predictor
+            # The imputed_data is a PyMC variable that includes both observed and imputed values
+            self.output += coef * imputed_data
 
     def build_hsgp_terms(self, pymc_backend):
         """Add HSGP (Hilbert-Space Gaussian Process approximation) terms to the PyMC model.

@@ -180,3 +180,26 @@ def response_evaluate_new_data(model, data):
     # We add an intercept to have a valid formula, but it's not used
     dm = fm.design_matrices(name + " ~ 1", data, env=env)
     return np.asarray(dm.response)
+
+
+def formula_uses_mi(formula_str):
+    """Check if a formula string contains the mi() transformation.
+
+    This is used to determine if missing data imputation is requested, which affects
+    how missing values are handled during design matrix creation.
+
+    Parameters
+    ----------
+    formula_str : str
+        The formula string to check.
+
+    Returns
+    -------
+    bool
+        True if the formula contains 'mi(' indicating missing data imputation is used.
+    """
+    import re
+    # Match 'mi(' that is not part of a larger word (e.g., 'family(')
+    # This regex looks for 'mi(' preceded by start of string, whitespace, or operators
+    pattern = r'(?:^|[\s~+*:|(),])mi\s*\('
+    return bool(re.search(pattern, formula_str))

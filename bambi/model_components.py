@@ -5,7 +5,15 @@ import xarray as xr
 from bambi.defaults import get_default_prior
 from bambi.families import univariate, multivariate
 from bambi.priors import Prior
-from bambi.terms import CommonTerm, GroupSpecificTerm, HSGPTerm, OffsetTerm, ResponseTerm
+from bambi.terms import (
+    CommonTerm,
+    GroupSpecificTerm,
+    HSGPTerm,
+    MissingDataTerm,
+    OffsetTerm,
+    ResponseTerm,
+    is_mi_term,
+)
 from bambi.utils import get_aliased_name, is_hsgp_term
 
 
@@ -84,6 +92,10 @@ class DistributionalComponent:
 
             if term.kind == "offset":
                 self.terms[name] = OffsetTerm(term, self.prefix)
+            elif is_mi_term(term):
+                # Term wrapped with mi() for missing data imputation
+                imputation_prior = priors.pop(f"{name}_imputation", None)
+                self.terms[name] = MissingDataTerm(term, prior, imputation_prior)
             else:
                 self.terms[name] = CommonTerm(term, prior, self.prefix)
 
@@ -110,6 +122,9 @@ class DistributionalComponent:
                 if term.prior is None:
                     term.prior = get_default_prior("hsgp", cov_func=term.cov)
                 continue
+            elif isinstance(term, MissingDataTerm):
+                # MissingDataTerm has its own coefficient prior and imputation prior
+                kind = "common"
             else:
                 kind = "common"
             term.prior = prepare_prior(term.prior, kind, self.spec.auto_scale)
@@ -476,7 +491,10 @@ class DistributionalComponent:
         return {
             k: v
             for (k, v) in self.terms.items()
-            if isinstance(v, CommonTerm) and not isinstance(v, OffsetTerm) and v.kind != "intercept"
+            if isinstance(v, CommonTerm)
+            and not isinstance(v, OffsetTerm)
+            and not isinstance(v, MissingDataTerm)
+            and v.kind != "intercept"
         }
 
     @property
@@ -493,6 +511,11 @@ class DistributionalComponent:
     def hsgp_terms(self):
         """Return dict of all HSGP terms in model."""
         return {k: v for (k, v) in self.terms.items() if isinstance(v, HSGPTerm)}
+
+    @property
+    def missing_data_terms(self):
+        """Return dict of all missing data terms in model."""
+        return {k: v for (k, v) in self.terms.items() if isinstance(v, MissingDataTerm)}
 
 
 class ResponseComponent:

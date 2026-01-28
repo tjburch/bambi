@@ -176,6 +176,87 @@ def weighted(x, weights):
 weighted.__metadata__ = {"kind": "weighted"}
 
 
+def mi(x, prior=None):
+    """Mark a variable as having missing values that should be imputed.
+
+    This function is used to indicate that missing values (NaN) in the variable should
+    be automatically imputed during model fitting using Bayesian imputation.
+
+    When used on the response variable (left-hand side of the formula), missing values
+    in the response will be imputed from the posterior predictive distribution.
+
+    When used on a predictor variable (right-hand side of the formula), a sub-model
+    will be created to model the predictor and impute its missing values.
+
+    Parameters
+    ----------
+    x : array-like
+        The variable containing missing values (NaN).
+    prior : dict, optional
+        Prior specification for imputation. For response imputation, this is not used
+        as the imputation prior is determined by the likelihood. For predictor imputation,
+        this specifies the prior for the imputation model. Defaults to None.
+
+    Returns
+    -------
+    np.ndarray
+        The input array, unchanged. The metadata attached to this function tells Bambi
+        to handle missing values via imputation rather than dropping them.
+
+    Examples
+    --------
+    Response-side imputation (missing values in the outcome):
+
+    >>> import bambi as bmb
+    >>> import pandas as pd
+    >>> import numpy as np
+    >>> df = pd.DataFrame({
+    ...     "y": [1.0, 2.0, np.nan, 4.0, 5.0],
+    ...     "x": [1, 2, 3, 4, 5]
+    ... })
+    >>> model = bmb.Model("mi(y) ~ x", df)
+
+    Predictor-side imputation (missing values in a covariate):
+
+    >>> df = pd.DataFrame({
+    ...     "y": [1.0, 2.0, 3.0, 4.0, 5.0],
+    ...     "x": [1, np.nan, 3, np.nan, 5]
+    ... })
+    >>> model = bmb.Model("y ~ mi(x)", df)
+
+    Notes
+    -----
+    - Missing values must be represented as NaN (np.nan or pd.NA)
+    - Response imputation uses PyMC's automatic imputation via masked arrays
+    - Predictor imputation creates an auxiliary model for the predictor
+    - The imputed values become part of the posterior samples
+
+    See Also
+    --------
+    censored : For censored response data
+    truncated : For truncated response data
+    """
+    x = np.asarray(x, dtype=float)  # Ensure NaN values are properly handled
+
+    if x.ndim != 1:
+        raise ValueError("'mi' only works with 1-dimensional arrays")
+
+    # Check if there are any missing values
+    n_missing = np.sum(np.isnan(x))
+    if n_missing == 0:
+        import warnings
+        warnings.warn(
+            "No missing values detected in the variable wrapped with mi(). "
+            "Consider removing mi() wrapper if no imputation is needed.",
+            UserWarning
+        )
+
+    return x
+
+
+mi.__metadata__ = {"kind": "mi"}
+
+
 # pylint: disable = invalid-name
 @register_stateful_transform
 class HSGP:  # pylint: disable = too-many-instance-attributes
@@ -425,6 +506,7 @@ transformations_namespace = {
     "c": c,
     "censored": censored,
     "constrained": constrained,
+    "mi": mi,
     "truncated": truncated,
     "weighted": weighted,
     "log": np.log,

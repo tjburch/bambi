@@ -20,9 +20,15 @@ class PriorScaler:
         self.priors = {}
 
         # Compute mean and std of the response
+        # Use nanmean/nanstd to handle missing data imputation (mi()) cases
         if isinstance(self.model.family, (Gaussian, StudentT)):
-            self.response_mean = np.mean(self.response_component.term.data)
-            self.response_std = np.std(self.response_component.term.data)
+            self.response_mean = np.nanmean(self.response_component.term.data)
+            self.response_std = np.nanstd(self.response_component.term.data)
+            # Fallback to sensible defaults if all values are NaN
+            if np.isnan(self.response_mean):
+                self.response_mean = 0
+            if np.isnan(self.response_std) or self.response_std == 0:
+                self.response_std = 1
         else:
             self.response_mean = 0
             self.response_std = 1
@@ -34,15 +40,20 @@ class PriorScaler:
         # Only adjust mu and sigma if there is at least one Normal prior for a common term.
         if self.priors:
             sigmas = np.hstack([prior["sigma"] for prior in self.priors.values()])
+            # Use nanmean to handle missing data imputation (mi()) cases
             x_mean = np.hstack(
-                [self.parent_component.terms[term].data.mean(axis=0) for term in self.priors]
+                [np.nanmean(self.parent_component.terms[term].data, axis=0) for term in self.priors]
             )
             sigma = (sigma**2 + np.dot(sigmas**2, x_mean**2)) ** 0.5
 
         return mu, sigma
 
     def get_slope_sigma(self, x):
-        return self.STD * (self.response_std / np.std(x))
+        # Use nanstd to handle missing data imputation (mi()) cases
+        x_std = np.nanstd(x)
+        if np.isnan(x_std) or x_std == 0:
+            x_std = 1
+        return self.STD * (self.response_std / x_std)
 
     def scale_response(self):
         # Here we would add cases for other families if we wanted

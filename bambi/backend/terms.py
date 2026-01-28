@@ -378,6 +378,30 @@ class ResponseTerm:
             # Get a weighted version of the response distribution
             weighted_dist = make_weighted_distribution(distribution)
             dist_rv = weighted_dist(self.name, weights, **kwargs, observed=observed, dims=dims)
+        # Handle missing data imputation
+        elif self.term.is_mi:
+            observed = kwargs.pop("observed")
+
+            # Convert to masked array where NaN values are masked
+            # PyMC will automatically create unobserved variables for masked values
+            # and impute them from the sampling distribution
+            mask = np.isnan(observed)
+            if not np.any(mask):
+                import warnings
+                warnings.warn(
+                    "No missing values found in the response variable wrapped with mi(). "
+                    "Proceeding without imputation.",
+                    UserWarning
+                )
+
+            # Set fill value to the mean of observed values for better initialization
+            observed_values = observed[~mask]
+            fill_value = np.mean(observed_values) if len(observed_values) > 0 else 0.0
+
+            observed_masked = np.ma.MaskedArray(
+                observed, mask=mask, fill_value=fill_value
+            )
+            dist_rv = distribution(self.name, observed=observed_masked, **kwargs)
         # All of the other response kinds are "not special" and thus are handled the same way
         else:
             dist_rv = distribution(self.name, **kwargs)
@@ -401,6 +425,7 @@ class ResponseTerm:
             or self.term.is_truncated
             or self.term.is_weighted
             or self.term.is_constrained
+            or self.term.is_mi
         ):
             return kwargs
 
@@ -601,6 +626,137 @@ class HSGPTerm:
                 covariance_function = create_covariance_function(**params_level)
                 output.append(covariance_function)
         return output
+
+    @property
+    def name(self):
+        if self.term.alias:
+            return self.term.alias
+        return self.term.name
+
+
+class MissingDataTerm:
+    """Representation of a predictor term with missing values in PyMC.
+
+    This term handles predictors wrapped with mi() that have missing values (NaN).
+    It creates a distribution for the predictor where observed values are fixed and
+    missing values are imputed from the posterior distribution.
+
+    Parameters
+    ----------
+    term : bambi.terms.MissingDataTerm
+        An object representing a predictor with missing data.
+    """
+
+    def __init__(self, term):
+        self.term = term
+        self.coords = self.term.coords.copy()
+        if self.coords and self.term.alias:
+            self.coords[self.term.alias + "_dim"] = self.coords.pop(self.term.name + "_dim")
+
+    def build(self, spec, pymc_backend):
+        """Build the imputation model and coefficient for this term.
+
+        Parameters
+        ----------
+        spec : bambi.Model
+            The Bambi model specification.
+        pymc_backend : bambi.backend.PyMCModel
+            The PyMC backend.
+
+        Returns
+        -------
+        tuple
+            A tuple of (coefficient, imputed_data) where:
+            - coefficient is the PyMC distribution for the term's coefficient
+            - imputed_data is the predictor data with missing values replaced by
+              imputed values from the posterior
+        """
+        data = self.term.data
+        label = self.name
+        args = self.term.prior.args
+        distribution = get_distribution_from_prior(self.term.prior)
+
+        # Build the imputation model for the predictor
+        imputed_data = self._build_imputation_model(pymc_backend)
+
+        # Dims of the response variable
+        response_dims = []
+        if isinstance(spec.family, (MultivariateFamily, Categorical)):
+            response_dims = list(spec.response_component.term.coords)
+            response_dims_n = len(spec.response_component.term.coords[response_dims[0]])
+            for key, value in args.items():
+                if value.ndim == 1:
+                    args[key] = np.hstack([value[:, np.newaxis]] * response_dims_n)
+
+        dims = list(self.coords) + response_dims
+        if dims:
+            coef = distribution(label, dims=dims, **args)
+        else:
+            if data.ndim == 1:
+                shape = None
+            elif data.shape[1] == 1:
+                shape = None
+            else:
+                shape = data.shape[1]
+            coef = distribution(label, shape=shape, **args)
+            coef = pt.atleast_1d(coef)
+
+        # Prepends one dimension if response is multivariate and the predictor is 1D
+        if response_dims and len(dims) == 1:
+            coef = coef[np.newaxis, :]
+
+        return coef, imputed_data
+
+    def _build_imputation_model(self, pymc_backend):
+        """Build the PyMC imputation model for the predictor.
+
+        This creates a Normal distribution for the predictor where observed values
+        constrain the distribution and missing values are imputed from the posterior.
+
+        Parameters
+        ----------
+        pymc_backend : bambi.backend.PyMCModel
+            The PyMC backend.
+
+        Returns
+        -------
+        pt.TensorVariable
+            A PyTensor variable representing the predictor with imputed values.
+        """
+        data = self.term.data
+        mask = self.term.missing_mask
+        n_missing = self.term.n_missing
+
+        # If no missing values, just return the data as-is
+        if n_missing == 0:
+            return data
+
+        # Create imputation prior
+        # Default to Normal with mean and std estimated from observed data
+        obs_mean = np.nanmean(data)
+        obs_std = np.nanstd(data)
+        if obs_std == 0 or np.isnan(obs_std):
+            obs_std = 1.0
+
+        # Create a distribution for the missing values
+        # The name includes the predictor name to avoid conflicts
+        imputation_label = f"{self.name}_imputed"
+
+        # Use masked array approach for automatic imputation
+        # PyMC will automatically create unobserved variables for masked values
+        observed_masked = np.ma.MaskedArray(data, mask=mask)
+
+        # Create a Normal distribution for the predictor
+        # The observed values constrain the distribution, missing values are imputed
+        imputed = pm.Normal(
+            imputation_label,
+            mu=obs_mean,
+            sigma=obs_std,
+            observed=observed_masked,
+            dims=("__obs__",)
+        )
+
+        return imputed
 
     @property
     def name(self):

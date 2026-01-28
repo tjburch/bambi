@@ -26,6 +26,7 @@ from bambi.utils import (
     listify,
     remove_common_intercept,
     wrapify,
+    formula_uses_mi,
 )
 
 _log = logging.getLogger("bambi")
@@ -142,7 +143,15 @@ class Model:
         priors = {} if priors is None else deepcopy(priors)
 
         # Obtain design matrices and related objects.
-        na_action = "drop" if dropna else "error"
+        # Determine the na_action based on dropna and mi() usage
+        formula_str = formula if isinstance(formula, str) else formula.main
+        uses_mi = formula_uses_mi(formula_str)
+
+        if uses_mi:
+            # When mi() is used, we need to preserve NaN values for imputation
+            na_action = "pass"
+        else:
+            na_action = "drop" if dropna else "error"
 
         # Handle additional namespaces
         additional_namespace = transformations_namespace.copy()

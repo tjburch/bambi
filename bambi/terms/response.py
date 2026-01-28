@@ -11,6 +11,7 @@ class ResponseTerm(BaseTerm):
         self.family = family
         self.is_censored = is_response_of_kind(self.term, "censored")
         self.is_constrained = is_response_of_kind(self.term, "constrained")
+        self.is_mi = is_response_of_kind(self.term, "mi")
         self.is_truncated = is_response_of_kind(self.term, "truncated")
         self.is_weighted = is_response_of_kind(self.term, "weighted")
 

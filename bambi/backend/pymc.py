@@ -175,6 +175,62 @@ class PyMCModel:
                 pm.Potential(f"pot_{count}", potential)
                 count += 1
 
+    def _get_mi_initvals(self, existing_initvals=None):
+        """Get initial values for missing data imputation variables.
+
+        When using mi() for missing data imputation, PyMC creates unobserved variables
+        for the missing values. This method computes reasonable initial values based on
+        the observed data to avoid NaN initialization issues.
+
+        Parameters
+        ----------
+        existing_initvals : dict, optional
+            Existing initvals dictionary to update.
+
+        Returns
+        -------
+        dict
+            Dictionary of initial values for imputation variables.
+        """
+        if existing_initvals is None:
+            existing_initvals = {}
+
+        initvals = existing_initvals.copy()
+
+        # Check for missing data imputation variables in the response
+        response_term = self.spec.response_component.term
+        if response_term.is_mi:
+            response_data = response_term.data
+            mask = np.isnan(response_data)
+            if np.any(mask):
+                observed_values = response_data[~mask]
+                if len(observed_values) > 0:
+                    # Use mean of observed values as initial value for imputed values
+                    init_value = np.nanmean(response_data)
+                    n_missing = np.sum(mask)
+
+                    # Find the unobserved variable name
+                    response_name = response_term.alias or response_term.name
+                    unobserved_name = f"{response_name}_unobserved"
+
+                    if unobserved_name not in initvals:
+                        initvals[unobserved_name] = np.full(n_missing, init_value)
+
+        # Check for missing data imputation variables in predictors
+        for component in self.spec.distributional_components.values():
+            for term_name, term in component.missing_data_terms.items():
+                if term.n_missing > 0:
+                    data = term.data
+                    observed_values = data[~term.missing_mask]
+                    if len(observed_values) > 0:
+                        init_value = np.nanmean(data)
+                        imputed_name = f"{term.alias or term.name}_imputed_unobserved"
+
+                        if imputed_name not in initvals:
+                            initvals[imputed_name] = np.full(term.n_missing, init_value)
+
+        return initvals if initvals else None
+
     def _run_mcmc(
         self,
         draws=1000,
@@ -203,6 +259,11 @@ class PyMCModel:
                 is_deterministic = variable in self.model.deterministics
                 if is_likelihood_param and is_deterministic:
                     vars_to_sample.remove(name)
+
+            # Get initial values for missing data imputation variables
+            initvals = self._get_mi_initvals(kwargs.get("initvals", {}))
+            if initvals:
+                kwargs["initvals"] = initvals
 
             with self.model:
                 try:

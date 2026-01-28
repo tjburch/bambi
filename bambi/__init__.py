@@ -11,6 +11,7 @@ from .families import Family, Likelihood, Link
 from .formula import Formula
 from .models import Model
 from .priors import Prior
+from .transformations import mi
 from . import interpret
 
 __version__ = version("bambi")
@@ -28,6 +29,7 @@ __all__ = [
     "inference_methods",
     "load_data",
     "math",
+    "mi",
 ]
 
 _log = logging.getLogger("bambi")

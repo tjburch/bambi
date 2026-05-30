@@ -1065,6 +1065,44 @@ class Model:
         else:
             return idata
 
+    def compute_log_prior(self, idata, inplace=True):
+        """Compute the model's log-prior
+
+        This adds a `log_prior` group to `idata` with one variable per free random variable
+        in the model. It is intended for prior sensitivity analysis.
+
+        Parameters
+        ----------
+        idata : InferenceData
+            The `InferenceData` instance returned by `.fit()`.
+        inplace : bool, optional
+            If `True` it will modify `idata` in-place. Otherwise, it will return a copy of
+            `idata` with the `log_prior` group added.
+
+        Returns
+        -------
+        InferenceData or None
+        """
+        self._check_built()
+
+        if not inplace:
+            idata = deepcopy(idata)
+
+        if "log_prior" in idata:
+            del idata.log_prior
+
+        pm.compute_log_prior(
+            idata, model=self.backend.model, extend_inferencedata=True, progressbar=False
+        )
+        idata.log_prior = idata.log_prior.assign_attrs(
+            modeling_interface="bambi", modeling_interface_version=__version__
+        )
+
+        if inplace:
+            return None
+        else:
+            return idata
+
     def _compute_likelihood_params(
         self,
         idata,

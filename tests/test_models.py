@@ -1420,3 +1420,38 @@ def test_weighted(mock_pymc_sample):
     idata = model.fit(chains=2)
     model.predict(idata, kind="response")
     model.predict(idata, kind="response", data=data)
+
+
+def test_compute_log_prior(mock_pymc_sample):
+    rng = np.random.default_rng(121195)
+    data = pd.DataFrame({"x": rng.normal(size=100), "y": rng.normal(size=100)})
+    model = bmb.Model("y ~ x", data)
+    idata = model.fit(chains=2)
+
+    model.compute_log_prior(idata)
+
+    assert "log_prior" in idata
+    assert set(idata.log_prior.data_vars) == {"Intercept", "x", "sigma"}
+    assert idata.log_prior.attrs["modeling_interface"] == "bambi"
+    assert "modeling_interface_version" in idata.log_prior.attrs
+
+    # Idempotent: a second in-place call does not raise
+    assert model.compute_log_prior(idata) is None
+
+
+def test_compute_log_prior_inplace_false(mock_pymc_sample):
+    rng = np.random.default_rng(121195)
+    data = pd.DataFrame({"x": rng.normal(size=100), "y": rng.normal(size=100)})
+    model = bmb.Model("y ~ x", data)
+    idata = model.fit(chains=2)
+
+    idata_copy = model.compute_log_prior(idata, inplace=False)
+
+    assert "log_prior" in idata_copy
+    assert "log_prior" not in idata
+
+
+def test_compute_log_prior_unbuilt_raises(data_n100):
+    model = bmb.Model("y1 ~ y2", data_n100)
+    with pytest.raises(ValueError, match="not built"):
+        model.compute_log_prior(idata=None)

@@ -8,7 +8,7 @@ $$
 y_i = a_i + b_i e^{-k_i x_i} + \epsilon_i.
 $$
 
-It is worth noting that this differs from models like splines, GAMs, GPs, etc. which are often called "nonlinear," but rather are estimating an unknown smooth function of `x`. By contrast, a nonlinear model here uses scientific knowledge to specify the functinal form and estimates its interpretable parameters.
+This differs from splines, GAMs, and GPs, which estimate an unknown smooth function of `x`. A nonlinear model here instead uses scientific knowledge to specify the functional form and estimate its interpretable parameters.
 
 ## Exponential decay
 

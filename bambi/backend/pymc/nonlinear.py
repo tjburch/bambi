@@ -29,6 +29,7 @@ _FUNCTIONS = {name: getattr(pt, name) for name in SUPPORTED_FUNCTIONS}
 
 
 def nonlinear_data_name(parameter_label: str, symbol: str) -> str:
+    """Return the backend data variable name for an expression input."""
     return f"{parameter_label}__{symbol}_data"
 
 
@@ -40,6 +41,28 @@ def build_nonlinear_parameter(
     family: Family,
     parameters: dict[str, pt.Variable],
 ) -> pt.Variable:
+    """Build a nonlinear likelihood parameter in a PyMC model.
+
+    Parameters
+    ----------
+    parameter : NonlinearParameter
+        Frontend description of the nonlinear parent.
+    predictor_values : dict of str to TensorVariable
+        Built additive predictors keyed by their original names.
+    data : pandas.DataFrame
+        Observed data containing the expression inputs.
+    model : pymc.Model
+        Model in which to create data and deterministic variables.
+    family : Family
+        Family providing the parent link and predictor transformation.
+    parameters : dict of str to TensorVariable
+        Other built likelihood parameters used by predictor transformations.
+
+    Returns
+    -------
+    TensorVariable
+        Deterministic parent parameter on the response scale.
+    """
     values = predictor_values.copy()
     for name in parameter.data_names:
         values[name] = pm.Data(
@@ -67,6 +90,25 @@ def build_nonlinear_parameter(
 
 
 def build_new_nonlinear_data(parameter: NonlinearParameter, data) -> dict[str, np.ndarray]:
+    """Build replacements for observed inputs to a nonlinear expression.
+
+    Parameters
+    ----------
+    parameter : NonlinearParameter
+        Nonlinear parent whose expression inputs are required.
+    data : pandas.DataFrame
+        New prediction or log-likelihood data.
+
+    Returns
+    -------
+    dict of str to numpy.ndarray
+        Backend data variable names mapped to new values.
+
+    Raises
+    ------
+    ValueError
+        If a required expression input is missing.
+    """
     missing = set(parameter.data_names) - set(data.columns)
     if missing:
         raise ValueError(f"New data is missing nonlinear expression column(s): {sorted(missing)}.")
@@ -77,6 +119,25 @@ def build_new_nonlinear_data(parameter: NonlinearParameter, data) -> dict[str, n
 
 
 def evaluate_expression(node, values):
+    """Evaluate an expression tree with PyTensor operations.
+
+    Parameters
+    ----------
+    node : ExpressionNode
+        Root of the expression tree to evaluate.
+    values : Mapping
+        Expression symbols mapped to PyTensor variables.
+
+    Returns
+    -------
+    TensorVariable
+        Evaluated expression.
+
+    Raises
+    ------
+    TypeError
+        If the tree contains an unknown node type.
+    """
     if isinstance(node, Literal):
         return pt.as_tensor_variable(node.value)
     if isinstance(node, Symbol):

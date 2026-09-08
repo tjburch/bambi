@@ -8,27 +8,35 @@ SUPPORTED_FUNCTIONS = frozenset({"exp", "log", "sqrt"})
 
 
 class ExpressionNode:
-    pass
+    """Base class for nodes in a nonlinear expression tree."""
 
 
 @dataclass(frozen=True)
 class Literal(ExpressionNode):
+    """A numeric literal in a nonlinear expression."""
+
     value: int | float
 
 
 @dataclass(frozen=True)
 class Symbol(ExpressionNode):
+    """A nonlinear parameter or observed data name."""
+
     name: str
 
 
 @dataclass(frozen=True)
 class UnaryOperation(ExpressionNode):
+    """A unary arithmetic operation."""
+
     operator: str
     operand: ExpressionNode
 
 
 @dataclass(frozen=True)
 class BinaryOperation(ExpressionNode):
+    """A binary arithmetic operation."""
+
     operator: str
     left: ExpressionNode
     right: ExpressionNode
@@ -36,18 +44,49 @@ class BinaryOperation(ExpressionNode):
 
 @dataclass(frozen=True)
 class FunctionCall(ExpressionNode):
+    """A call to a supported single-argument function."""
+
     function: str
     argument: ExpressionNode
 
 
 @dataclass(frozen=True)
 class NonlinearExpression:
+    """A parsed nonlinear expression.
+
+    Attributes
+    ----------
+    source : str
+        Original expression source.
+    root : ExpressionNode
+        Root of the parsed expression tree.
+    symbols : frozenset of str
+        Nonlinear parameter and observed data names used by the expression.
+    """
+
     source: str
     root: ExpressionNode
     symbols: frozenset[str]
 
     @classmethod
     def parse(cls, source: str) -> "NonlinearExpression":
+        """Parse a nonlinear expression from its source.
+
+        Parameters
+        ----------
+        source : str
+            Expression using supported arithmetic operators and functions.
+
+        Returns
+        -------
+        NonlinearExpression
+            Parsed expression and the symbols it references.
+
+        Raises
+        ------
+        ValueError
+            If the expression is malformed or contains unsupported syntax.
+        """
         try:
             parsed = ast.parse(source, mode="eval")
         except SyntaxError as error:
@@ -60,6 +99,22 @@ class NonlinearExpression:
 
 @dataclass
 class NonlinearParameter:
+    """Description of a likelihood parent defined by a nonlinear expression.
+
+    Attributes
+    ----------
+    name : str
+        Original likelihood parameter name.
+    expression : NonlinearExpression
+        Expression that defines the parameter on the link scale.
+    data_names : tuple of str
+        Observed data columns referenced directly by the expression.
+    alias : str or None
+        Name used in the backend graph and posterior output.
+    is_parent : bool
+        Whether this is the likelihood's parent parameter.
+    """
+
     name: str
     expression: NonlinearExpression
     data_names: tuple[str, ...]
@@ -68,10 +123,30 @@ class NonlinearParameter:
 
     @property
     def label(self):
+        """Return the aliased name when present, otherwise the original name."""
         return self.alias or self.name
 
 
 def split_nonlinear_formula(formula: str) -> tuple[str, str]:
+    """Separate a nonlinear formula into its response and expression.
+
+    Parameters
+    ----------
+    formula : str
+        Formula in the form ``response ~ expression``.
+
+    Returns
+    -------
+    response_formula : str
+        Intercept-only formula used to build the response design.
+    expression : str
+        Nonlinear expression from the right-hand side.
+
+    Raises
+    ------
+    ValueError
+        If the formula does not contain one response and one expression.
+    """
     lhs, separator, rhs = formula.partition("~")
     if not separator or not lhs.strip() or not rhs.strip() or "~" in rhs:
         raise ValueError("A nonlinear formula must have the form 'response ~ expression'.")
@@ -79,6 +154,27 @@ def split_nonlinear_formula(formula: str) -> tuple[str, str]:
 
 
 def resolve_nonlinear_data_names(expression, predictors, data) -> tuple[str, ...]:
+    """Resolve and validate observed columns used by a nonlinear expression.
+
+    Parameters
+    ----------
+    expression : NonlinearExpression
+        Parsed nonlinear expression.
+    predictors : Mapping
+        Modeled nonlinear parameters keyed by their original names.
+    data : pandas.DataFrame
+        Model data containing observed expression inputs.
+
+    Returns
+    -------
+    tuple of str
+        Sorted names of numeric data columns used directly by the expression.
+
+    Raises
+    ------
+    ValueError
+        If a symbol is unresolved or an expression input is not numeric.
+    """
     predictor_names = set(predictors)
     data_names = expression.symbols - predictor_names
     unknown = data_names - set(data.columns)
@@ -101,7 +197,33 @@ def resolve_nonlinear_data_names(expression, predictors, data) -> tuple[str, ...
 def prepare_nonlinear_data(
     formula, expression, data, dropna, include_response=True, parameter_names=()
 ):
-    """Use the same complete observations for every part of a nonlinear model."""
+    """Prepare aligned, complete observations for every part of a nonlinear model.
+
+    Parameters
+    ----------
+    formula : Formula
+        Nonlinear model formula and its parameter formulas.
+    expression : NonlinearExpression
+        Parsed nonlinear expression.
+    data : pandas.DataFrame
+        Model or prediction data.
+    dropna : bool
+        Whether to remove incomplete rows instead of raising an error.
+    include_response : bool
+        Whether the response is required in ``data``.
+    parameter_names : Collection of str
+        Likelihood parameter names used to detect parameter dependencies.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Data with a shared complete-row mask applied when requested.
+
+    Raises
+    ------
+    ValueError
+        If parameters depend on one another or required data are incomplete.
+    """
     names = set(formula.additionals_lhs)
     variables = set(expression.symbols - names)
     if include_response:

@@ -1,0 +1,158 @@
+name: Manual covariance validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Validation stage (start with compile-smoke)
+        type: choice
+        options: [compile-smoke, references, single-block, heldout, sbc-pilot, sbc-full, samplers, benchmarks]
+        default: compile-smoke
+      start:
+        description: Zero-based campaign case offset
+        type: number
+        default: 0
+      count:
+        description: Cases in this dispatch (1 to 10)
+        type: number
+        default: 2
+
+permissions:
+  contents: read
+
+concurrency:
+  group: covariance-validation
+  cancel-in-progress: false
+
+env:
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  NUMBA_NUM_THREADS: '1'
+  VECLIB_MAXIMUM_THREADS: '1'
+  STAN_NUM_THREADS: '1'
+  RAYON_NUM_THREADS: '1'
+  MAKEFLAGS: '-j1'
+  PYTHONPATH: ${{ github.workspace }}
+  VALIDATION: docs/examples/group_covariance_validation
+
+jobs:
+  select:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.cases.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - id: cases
+        env:
+          SUITE: ${{ inputs.suite }}
+          START: ${{ inputs.start }}
+          COUNT: ${{ inputs.count }}
+        run: python3 "$VALIDATION/workflow_cases.py" "$SUITE" --start "$START" --count "$COUNT" --github-output "$GITHUB_OUTPUT"
+
+  validate:
+    needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    env:
+      SUITE: ${{ inputs.suite }}
+      CASE_ID: ${{ matrix.id }}
+      MODE: ${{ matrix.mode }}
+      FAMILY: ${{ matrix.family }}
+      MPLCONFIGDIR: ${{ runner.temp }}/covariance-matplotlib
+      PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/covariance-pytensor
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12.3'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.8.22'
+          enable-cache: true
+      - name: Install isolated Python reference environment
+        run: |
+          uv venv .validation-venv
+          uv pip install --python .validation-venv/bin/python -r "$VALIDATION/requirements.txt" -e .
+          uv pip freeze --python .validation-venv/bin/python > python-reference-lock.txt
+      - uses: r-lib/actions/setup-r@v2
+        if: inputs.suite == 'compile-smoke' || inputs.suite == 'references' || inputs.suite == 'single-block'
+        with:
+          r-version: '4.5.1'
+          use-public-rspm: true
+      - uses: actions/cache@v4
+        if: inputs.suite == 'compile-smoke' || inputs.suite == 'references' || inputs.suite == 'single-block'
+        with:
+          path: |
+            ${{ env.R_LIBS_USER }}
+            ${{ runner.temp }}/covariance-cmdstan
+          key: covariance-r-ubuntu24-r451-${{ hashFiles('docs/examples/group_covariance_validation/setup_reference.R') }}
+      - name: Install serial R and CmdStan reference toolchain
+        if: inputs.suite == 'compile-smoke' || inputs.suite == 'references' || inputs.suite == 'single-block'
+        run: Rscript "$VALIDATION/setup_reference.R"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/covariance-pytensor
+          key: covariance-pytensor-${{ matrix.mode }}-${{ hashFiles('bambi/**/*.py', 'docs/examples/group_covariance_validation/requirements.txt') }}
+      - name: Native brms or four-block Stan comparison
+        if: inputs.suite == 'references' || inputs.suite == 'compile-smoke'
+        run: |
+          smoke=()
+          if [ "$SUITE" = compile-smoke ]; then smoke=(--smoke); fi
+          .validation-venv/bin/python "$VALIDATION/run_reference_case.py" "$MODE" "$FAMILY" "results/$CASE_ID" "${smoke[@]}"
+      - name: Independent single-block comparison
+        if: inputs.suite == 'single-block'
+        run: |
+          .validation-venv/bin/python "$VALIDATION/single_block_reference.py" generate "$MODE" "$FAMILY" "results/$CASE_ID/fixture" --seed 20260908
+          .validation-venv/bin/python "$VALIDATION/single_block_reference.py" fit "results/$CASE_ID/fixture" "results/$CASE_ID/bambi" --engine bambi --seed 20260909
+          .validation-venv/bin/python "$VALIDATION/single_block_reference.py" fit "results/$CASE_ID/fixture" "results/$CASE_ID/stan" --engine stan --seed 20260910
+          .validation-venv/bin/python "$VALIDATION/compare_summaries.py" "results/$CASE_ID/bambi/summary.json" "results/$CASE_ID/stan/summary.json" --output "results/$CASE_ID/comparison.json"
+      - name: One resumable SBC replicate
+        if: inputs.suite == 'sbc-pilot' || inputs.suite == 'sbc-full'
+        run: |
+          phase=pilot
+          if [ "$SUITE" = sbc-full ]; then phase=full; fi
+          .validation-venv/bin/python "$VALIDATION/sbc.py" init results/campaign --phase "$phase" --commit "$GITHUB_SHA"
+          .validation-venv/bin/python "$VALIDATION/sbc.py" run results/campaign/manifest.json --case "$CASE_ID"
+      - name: Held-out subject, future-time or three-way refit
+        if: inputs.suite == 'heldout'
+        run: |
+          .validation-venv/bin/python "$VALIDATION/single_block_reference.py" generate four-block-ar1 "$FAMILY" "results/$CASE_ID/fixture" --seed 20260908
+          .validation-venv/bin/python "$VALIDATION/heldout_checks.py" "results/$CASE_ID/fixture/data.csv" "results/$CASE_ID/heldout" --split "$MODE" --family "$FAMILY" --seed 20260909
+      - name: Sampler integration dependencies
+        if: inputs.suite == 'samplers'
+        run: |
+          uv pip install --python .validation-venv/bin/python -r "$VALIDATION/requirements.txt" -e '.[jax]'
+          uv pip freeze --python .validation-venv/bin/python > python-reference-lock.txt
+      - name: Structured sampler integration
+        if: inputs.suite == 'samplers'
+        env:
+          BAMBI_COVARIANCE_SAMPLER_CHECK: '1'
+          BAMBI_COVARIANCE_SAMPLER: ${{ matrix.mode }}
+        run: .validation-venv/bin/python -m pytest tests/test_covariance_samplers.py -q
+      - name: Serial resource benchmarks
+        if: inputs.suite == 'benchmarks'
+        run: .validation-venv/bin/python "$VALIDATION/run_benchmarks.py" results/benchmarks
+      - name: Preserve completed work and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: covariance-${{ inputs.suite }}-${{ matrix.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          compression-level: 6
+          include-hidden-files: false
+          path: |
+            results/
+            python-reference-lock.txt
+            r-reference-packages.csv

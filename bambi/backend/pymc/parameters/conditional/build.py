@@ -38,7 +38,7 @@ def build_conditional_parameter(
     model: pm.Model,
 ) -> pt.Variable:
     parameter = parameter_info.parameter
-    value = 0
+    value = pt.as_tensor_variable(0.0)
     param_spec = family.get_param_spec(parameter.name)
     link = family.link[parameter.name]
     inverse_link = INVERSE_LINKS.get(link.name, link.inverse_link)
@@ -281,6 +281,8 @@ def _build_dense_group_specific_idx(
     term_graphs = {}
     for term_info in terms:
         lookup, term_contribution = build_group_specific_term_idx(term_info, param_spec, model)
-        term_graphs[term_info.term.label] = DenseGroupSpecificTermGraph(lookup=lookup)
+        term_graphs[term_info.term.label] = DenseGroupSpecificTermGraph(
+            lookup=lookup, contribution=term_contribution
+        )
         contribution += term_contribution
     return contribution, term_graphs

@@ -1,3 +1,8 @@
+# Unreleased
+
+- Add experimental structured covariance for group-specific effects: AR1, OU,
+  exchangeable, finite Toeplitz, and unstructured coefficient blocks.
+
 <a id="0.19.0"></a>
 # [Bambi 0.19.0](https://github.com/bambinos/bambi/releases/tag/0.19.0) - 2026-07-12
 

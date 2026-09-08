@@ -1,0 +1,118 @@
+---
+title: "Structured covariance for group-specific effects"
+execute:
+  enabled: false
+---
+
+## Latent effects, not correlated residuals
+
+For a Bernoulli model, the linear predictor can contain several latent trajectories:
+
+$$
+\operatorname{logit}(p_i) = x_i^T\beta + \sum_b u_{b,g_b(i),t_i},
+\qquad u_{b,g} \sim N(0, D_b R_b D_b).
+$$
+
+Groups within each block are independent conditional on its covariance parameters.
+Different blocks are also independent in the prior; their posterior effects need
+not be independent. The response still follows the ordinary Bernoulli likelihood.
+For Gaussian observations, the latent covariance adds to observation noise after
+integrating out latent effects. It does not replace residual noise.
+
+## Multiple trajectories
+
+```python
+import bambi as bmb
+
+formula = (
+    "outcome ~ x1 + x2"
+    " + ar1(0 + year | subject)"
+    " + ar1(0 + year | subject:condition)"
+    " + ar1(0 + year | subject:context)"
+    " + ar1(0 + year | subject:condition:context)"
+)
+model = bmb.Model(formula, data, family="bernoulli")
+```
+
+Use `proportion(successes, trials)` as the response and `family="binomial"`
+for aggregated binomial observations. Aggregation is valid only when all trials
+in a row share the same predictors and latent cells.
+
+The first block is shared by observations from one subject. The final block is
+shared only within one subject/condition/context combination. Replicate rows at
+the same time share a latent coefficient, but response noise remains separate.
+Use a crossed design with enough observations to distinguish variance components.
+When grouping partitions coincide, component estimates can depend strongly on priors.
+
+## Structures and priors
+
+| Formula term | Meaning |
+|---|---|
+| `ar1(0 + year \| subject)` | Stationary AR1; correlation `rho ** abs(year_i - year_j)` |
+| `ou(0 + time \| subject)` | Continuous-time correlation `exp(-decay * distance)` |
+| `cs(0 + visit \| subject)` | One correlation between different visit levels |
+| `toep(0 + year \| subject, max_lag=5)` | Finite positive-definite Toeplitz correlation |
+| `us(0 + C(visit) \| subject)` | Unstructured covariance across visits |
+| `us(1 + x \| subject)` | Correlated intercept and slope |
+
+AR1 and Toeplitz require numeric integer times. Missing years retain their actual
+gaps. OU accepts fractional times. Recenter or rescale extreme time magnitudes
+above `2**52` before fitting.
+
+**Scale limitation:** temporal/exchangeable blocks use one marginal SD per term,
+shared across its groups and times. Unstructured blocks use one SD per coefficient.
+Heterogeneous temporal scales and scale regression are deferred.
+
+```python
+term = "ar1(0 + year | subject)"
+model = bmb.Model(
+    f"outcome ~ x1 + {term}", data, family="bernoulli",
+    priors={term: {
+        "sd": bmb.Prior("HalfNormal", sigma=0.7),
+        "rho": bmb.Prior("Normal", mu=0, sigma=0.5),
+    }},
+)
+```
+
+Correlation priors are truncated to valid support. Defaults regularize correlations
+and partial autocorrelations with Normal(0, 0.5), use Exponential(1) for OU decay,
+and LKJ(2) for unstructured correlation. Default latent SD priors are HalfNormal
+with scale 2.5 on non-Gaussian link scales; Gaussian parent effects use 2.5 times
+the response SD. Set explicit priors for substantive analysis and reference matching.
+
+Unstructured keys are `sd` and `eta`; a fixed `correlation` matrix can replace
+`eta`. Toeplitz uses `partial`, one partial autocorrelation per lag, not a vector
+of ordinary autocorrelations. Fixed numeric hyperparameters are accepted too.
+
+## Prediction
+
+```python
+model.predict(idata, data=target_data, kind="response_params")
+model.predict(idata, data=target_data, kind="response")
+model.predict(idata, data=target_data, include_group_specific=False)
+```
+
+Existing cells keep their posterior effects. AR1/OU interpolation and extrapolation
+draw all requested times jointly, conditional on fitted coefficients. New subjects
+receive population trajectories. A new three-way combination can retain known
+subject and two-way effects while receiving a new three-way trajectory.
+
+CS and unstructured visit effects require declared levels. Toeplitz requires the
+combined fitted/target time span to remain within `max_lag`. New latent cells do not
+have fitted pointwise conditional log likelihoods; use a suitable held-out refit
+for model assessment. Repeated calls do not persist newly sampled latent cells.
+
+## Validation and resource use
+
+The implementation is under validation. Small construction and prediction checks
+are not evidence of posterior agreement with brms or Stan. The reference scripts
+and outstanding gates are described in
+[the validation guide](../examples/group_covariance_validation/README.md).
+
+Use prior predictive checks before fitting, then convergence diagnostics, posterior
+predictive checks, calibration and prior sensitivity. A four-block binary model
+can need substantially more data than a simple random-intercept model.
+
+On a constrained laptop, run only small serial checks with one numerical thread.
+Run reference fits, the full backend matrix, and simulation calibration on suitable
+hardware. This page never executes fitting during rendering.

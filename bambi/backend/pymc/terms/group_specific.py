@@ -9,6 +9,7 @@ from bambi.backend.pymc.types import Dims
 from bambi.backend.pymc.utils import get_distribution_from_prior
 from bambi.priors.prior import Prior
 from bambi.families.types import ParamSpec
+from bambi.backend.pymc.terms.structured import build_structured_distribution
 
 
 def build_group_specific_term_dot(
@@ -34,15 +35,8 @@ def build_group_specific_term_dot(
         elif param_spec.coefs_dim == "response_reduced":
             dims_output = tuple(model.__bambi_attrs__["response_coords_reduced"])
 
-    param_rv = build_distribution(
-        prior=term.prior,
-        label=param_name,
-        dims_expr=dims_expr,
-        dims_factor=dims_factor,
-        dims_output=dims_output,
-        noncentered=term.noncentered,
-        hyperprior_aliases=term.hyperprior_alias,
-        model=model,
+    param_rv = _build_coefficient_distribution(
+        term_info, param_spec, dims_factor, dims_expr, dims_output, model
     )
 
     # If response is multivariate: (q, K)
@@ -75,6 +69,10 @@ def build_group_specific_term_idx(
     predictor_data = None
     if not is_intercept:
         predictor_dims = ("__obs__",) + dims_expr
+        if hasattr(term, "block"):
+            data_dim = f"{term.expr_name}_data_dim"
+            model.add_coord(data_dim, term.block.coordinates.tolist())
+            predictor_dims = ("__obs__", data_dim)
         data_value_name = predictor_data_name(term.expr_name, predictor_dims, model)
         if data_value_name in model:
             predictor_data = model[data_value_name]
@@ -96,15 +94,8 @@ def build_group_specific_term_idx(
         elif param_spec.coefs_dim == "response_reduced":
             dims_output = tuple(model.__bambi_attrs__["response_coords_reduced"])
 
-    param_rv = build_distribution(
-        prior=term.prior,
-        label=param_name,
-        dims_factor=dims_factor,
-        dims_expr=dims_expr,
-        dims_output=dims_output,
-        noncentered=term.noncentered,
-        hyperprior_aliases=term.hyperprior_alias,
-        model=model,
+    param_rv = _build_coefficient_distribution(
+        term_info, param_spec, dims_factor, dims_expr, dims_output, model
     )
 
     if len(dims_factor) > 1:
@@ -131,6 +122,24 @@ def build_group_specific_term_idx(
         contribution = contribution.sum(axis=axes)
 
     return selected_param, contribution
+
+
+def _build_coefficient_distribution(
+    term_info, param_spec, dims_factor, dims_expr, dims_output, model
+):
+    term = term_info.term
+    if hasattr(term, "block"):
+        return build_structured_distribution(term_info, param_spec, model)
+    return build_distribution(
+        prior=term.prior,
+        label=term.label,
+        dims_factor=dims_factor,
+        dims_expr=dims_expr,
+        dims_output=dims_output,
+        noncentered=term.noncentered,
+        hyperprior_aliases=term.hyperprior_alias,
+        model=model,
+    )
 
 
 def build_distribution(

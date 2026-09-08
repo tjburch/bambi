@@ -79,6 +79,11 @@ def coords_from_common(term):
 
 
 def coords_from_group_specific(term):
+    if hasattr(term, "block"):
+        return (
+            {f"{term.expr_name}_dim": term.block.coordinates.tolist()},
+            {f"{term.factor_name}_dim": term.groups},
+        )
     expr_coords = {}
     factor_coords = {}
     expr = term.expr

@@ -7,6 +7,7 @@ project:
   render:
     - "*.qmd"
     - "notebooks/*.ipynb"
+    - "notebooks/group_specific_covariance.qmd"
     # - "!ignored-dir/"
     # - "!ignored-file.qmd"
     # they should go after things we do want to render
@@ -66,6 +67,7 @@ website:
             - notebooks/logistic_regression.ipynb
             - notebooks/model_comparison.ipynb
             - notebooks/hierarchical_binomial_bambi.ipynb
+            - notebooks/group_specific_covariance.qmd
             - notebooks/alternative_links_binary.ipynb
             - notebooks/wald_gamma_glm.ipynb
             - notebooks/negative_binomial.ipynb

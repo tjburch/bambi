@@ -3,6 +3,7 @@ import traceback
 import warnings
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from importlib.metadata import version
 
 from typing import Optional
@@ -34,6 +35,7 @@ from bambi.backend.pymc.parameters.conditional import (
     make_conditional_parameter_info,
 )
 from bambi.backend.pymc.terms import build_potentials, build_response_term
+from bambi.backend.pymc.terms.structured import recover_structured_offsets
 from bambi.backend.pymc.terms.response import (
     build_new_response_data,
     build_response_prediction_variables,
@@ -196,6 +198,7 @@ class PyMCModel:
         prior_only=False,
         random_seed=None,
     ):
+        explicit_variables = var_names is not None
         if prior_only:
             unobserved_rvs_names = []
             flat_rvs = []
@@ -228,6 +231,9 @@ class PyMCModel:
                 [variable.name for variable in variables], include_transformed=False
             )
 
+        if not explicit_variables:
+            var_names = [name for name in var_names if name not in self._structured_matrix_names]
+
         if omit_offsets:
             var_names = [name for name in var_names if not name.endswith("_offset")]
 
@@ -255,6 +261,15 @@ class PyMCModel:
             getattr(idata, group).attrs["modeling_interface_version"] = __version__
 
         return idata
+
+    @property
+    def _structured_matrix_names(self):
+        return {
+            f"{term.label}_cholesky"
+            for parameter in self.spec.conditional_parameters.values()
+            for term in parameter.group_specific_terms.values()
+            if hasattr(term, "block")
+        }
 
     def graph(self, formatting="plain"):
         return pm.model_to_graphviz(model=self.model, formatting=formatting)
@@ -288,17 +303,7 @@ class PyMCModel:
         # If group-specific offsets are discarded, we add them back.
         # They are needed for the computation of deterministics (model parameters).
         posterior = as_dataset(idata["posterior"])
-        offset_values = {}
-        for parameter_info in self._conditional_parameter_info.values():
-            for term_info in parameter_info.group_specific_terms:
-                term = term_info.term
-                term_label = term.label
-                offset_name = f"{term_label}_offset"
-                if term.noncentered and offset_name not in posterior:
-                    sigma_name = term.hyperprior_alias.get("sigma", "sigma")
-                    offset_values[offset_name] = (
-                        posterior[term_label] / posterior[f"{term_label}_{sigma_name}"]
-                    )
+        offset_values = self._recover_offsets(posterior) if include_group_specific else {}
 
         if data is None:
             self._predict_in_sample(
@@ -344,17 +349,7 @@ class PyMCModel:
 
         posterior = as_dataset(idata["posterior"])
 
-        offset_values = {}
-        for parameter_info in self._conditional_parameter_info.values():
-            for term_info in parameter_info.group_specific_terms:
-                term = term_info.term
-                term_label = term.label
-                offset_name = f"{term_label}_offset"
-                if term.noncentered and offset_name not in posterior:
-                    sigma_name = term.hyperprior_alias.get("sigma", "sigma")
-                    offset_values[offset_name] = (
-                        posterior[term_label] / posterior[f"{term_label}_{sigma_name}"]
-                    )
+        offset_values = self._recover_offsets(posterior)
 
         trace = idata
         if offset_values:
@@ -377,6 +372,23 @@ class PyMCModel:
             return None
 
         return idata
+
+    def _recover_offsets(self, posterior):
+        offset_values = {}
+        for parameter_info in self._conditional_parameter_info.values():
+            for term_info in parameter_info.group_specific_terms:
+                term = term_info.term
+                name = f"{term.label}_offset"
+                if name not in self.model or name in posterior:
+                    continue
+                if hasattr(term, "block"):
+                    offset_values[name] = recover_structured_offsets(term, posterior, self.model)
+                else:
+                    sigma_name = term.hyperprior_alias.get("sigma", "sigma")
+                    offset_values[name] = (
+                        posterior[term.label] / posterior[f"{term.label}_{sigma_name}"]
+                    )
+        return offset_values
 
     def compute_log_prior(self, idata, inplace: bool = True):
         if not inplace:
@@ -497,9 +509,13 @@ class PyMCModel:
         kind,
         progressbar,
     ) -> None:
-        new_data, new_coords, factor_plans = self._build_new_data(data, "prediction", kind)
+        new_data, new_coords, factor_plans = self._build_new_data(
+            data, "prediction", kind, include_group_specific=include_group_specific
+        )
         out_of_sample_plans = [
-            plan for plan in factor_plans if (plan.groups_index == -1).any() or plan.groups_new
+            plan
+            for plan in factor_plans
+            if (plan.groups_index == -1).any() or plan.groups_new or plan.coordinates_new
         ]
         var_names = parameters_names[:]
         if kind in ("response", "response_conditional", "time_and_cause"):
@@ -557,13 +573,16 @@ class PyMCModel:
     def _compute_log_likelihood_out_of_sample(self, trace, data: pd.DataFrame, progressbar) -> None:
         new_data, new_coords, factor_plans = self._build_new_data(data, "log_likelihood")
         out_of_sample_plans = [
-            plan for plan in factor_plans if (plan.groups_index == -1).any() or plan.groups_new
+            plan
+            for plan in factor_plans
+            if (plan.groups_index == -1).any() or plan.groups_new or plan.coordinates_new
         ]
 
         if out_of_sample_plans:
             factors = tuple(plan.factor_name for plan in out_of_sample_plans)
             raise ValueError(
-                f"Cannot compute log likelihood for new groups of the factors {factors}."
+                "Cannot compute conditional log likelihood for new groups or latent times "
+                f"of {factors}."
             )
 
         model = pm.model.fgraph.clone_model(self.model)
@@ -578,7 +597,13 @@ class PyMCModel:
                 progressbar=progressbar,
             )
 
-    def _build_new_data(self, data: pd.DataFrame, purpose: str, kind: str | None = None):
+    def _build_new_data(
+        self,
+        data: pd.DataFrame,
+        purpose: str,
+        kind: str | None = None,
+        include_group_specific=True,
+    ):
         new_coords = {"__obs__": range(len(data))}
         new_data = build_new_response_data(
             self.spec.response_term, data, self.spec.family, purpose, kind
@@ -586,6 +611,8 @@ class PyMCModel:
         factor_plans: list[DenseGroupSpecificFactorPlan] = []
 
         for parameter_info in self._conditional_parameter_info.values():
+            if not include_group_specific:
+                parameter_info = replace(parameter_info, group_specific_factors=())
             if bmb_config["SPARSE_DOT"] and parameter_info.group_specific_terms:
                 parameter_data, parameter_factor_plans, parameter_coords = (
                     build_new_sparse_conditional_parameter_data(parameter_info, data, self.model)
@@ -597,6 +624,14 @@ class PyMCModel:
                 )
             new_data.update(parameter_data)
             factor_plans.extend(parameter_factor_plans)
+            if not bmb_config["SPARSE_DOT"]:
+                for plan in parameter_factor_plans:
+                    for term_info in plan.terms:
+                        term = term_info.term
+                        if hasattr(term, "block"):
+                            new_coords[f"{term.expr_name}_data_dim"] = np.concatenate(
+                                [term.block.coordinates, plan.coordinates_new]
+                            ).tolist()
 
         return new_data, new_coords, factor_plans
 
@@ -620,6 +655,9 @@ class PyMCModel:
             self.model.unobserved_value_vars, include_transformed=False
         )
         vars_to_sample = [variable.name for variable in vars_to_sample]
+        vars_to_sample = [
+            name for name in vars_to_sample if name not in self._structured_matrix_names
+        ]
 
         if not include_response_params:
             parameters_names = [param.label for param in self.spec.conditional_parameters.values()]
@@ -744,7 +782,7 @@ class PyMCModel:
         idata = _posterior_samples_to_idata(
             samples,
             self.model,
-            excluded_var_names=response_parameter_names,
+            excluded_var_names=response_parameter_names + list(self._structured_matrix_names),
         )
 
         if include_response_params:

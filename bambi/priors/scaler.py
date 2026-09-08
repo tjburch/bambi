@@ -199,6 +199,8 @@ def scale_priors(model):
 
     # Scale group-specific terms.
     for term in main_parameter.group_specific_terms.values():
+        if hasattr(term, "block"):
+            continue
         auto_scale = getattr(term.prior, "auto_scale", False)
         is_half_normal = getattr(term.prior.args.get("sigma"), "name", None) == "HalfNormal"
         if auto_scale and is_half_normal:

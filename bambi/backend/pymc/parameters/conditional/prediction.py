@@ -14,6 +14,7 @@ from bambi.backend.pymc.terms.common import shape_prior_arg
 from bambi.backend.pymc.terms.info import GroupSpecificTermInfo
 from bambi.backend.pymc.utils import get_distribution_from_prior
 from bambi.priors.prior import Prior
+from bambi.backend.pymc.terms.structured import prediction_coefficients
 
 from .state import (
     ConditionalParameterInfo,
@@ -77,19 +78,31 @@ def add_new_dense_group_specific_contributions(
                 )
                 coefficients = coefficients.reshape((-1, *tail_shape))
 
-            if plan.groups_new:
+            if hasattr(term, "block"):
+                coefficients = prediction_coefficients(
+                    term, coefficients, plan.coordinates_new, len(plan.groups_new), model
+                )
+            elif plan.groups_new:
                 new_coefficients = _create_new_group_coefficients(
                     term_info, len(plan.groups_new), plan.factor_ndim, model
                 )
                 coefficients = pt.concatenate([coefficients, new_coefficients], axis=0)
 
-            replacement = replace_vars_in_graphs([coefficients[effective_idx]], memo)[0]
             parameter_graph = group_specific_state.parameters[plan.parameter_label]
 
             if not isinstance(parameter_graph, DenseGroupSpecificParameterGraph):
                 raise TypeError("Expected a dense group-specific graph.")
 
-            lookup = memo[parameter_graph.terms[term.label].lookup]
+            if hasattr(term, "block"):
+                data_name = predictor_data_name(
+                    term.expr_name, ("__obs__", f"{term.expr_name}_data_dim"), model
+                )
+                value = (coefficients[effective_idx] * model[data_name]).sum(axis=1)
+                replacement = replace_vars_in_graphs([value], memo)[0]
+                lookup = memo[parameter_graph.terms[term.label].contribution]
+            else:
+                replacement = replace_vars_in_graphs([coefficients[effective_idx]], memo)[0]
+                lookup = memo[parameter_graph.terms[term.label].lookup]
             replacements.append((lookup, replacement))
 
     if replacements:
@@ -143,10 +156,15 @@ def add_new_sparse_group_specific_contributions(
                 if term_info.term.label == term_label
             )
             plan = plans_by_factor[term_info.term.factor_name]
-            coefficient_block = _get_sparse_term_coefficients(model[term_label], is_univariate)
+            coefficients = model[term_label]
+            if hasattr(term_info.term, "block"):
+                coefficients = prediction_coefficients(
+                    term_info.term, coefficients, plan.coordinates_new, len(plan.groups_new), model
+                )
+            coefficient_block = _get_sparse_term_coefficients(coefficients, is_univariate)
             coefficient_block = replace_vars_in_graphs([coefficient_block], memo)[0]
 
-            if plan.groups_new:
+            if plan.groups_new and not hasattr(term_info.term, "block"):
                 new_coefficients = _create_new_group_coefficients(
                     term_info, len(plan.groups_new), plan.factor_ndim, model
                 )
@@ -232,6 +250,9 @@ def _build_new_dense_group_specific_data(
     for factor_info in parameter_info.group_specific_factors:
         representative = factor_info.terms[0].term
         group_index, new_groups = representative.term.eval_new_data_group_index(data)
+        coordinates_new = ()
+        if hasattr(representative, "block"):
+            _, coordinates_new = representative.block.prediction_design(data)
         factor_plans.append(
             DenseGroupSpecificFactorPlan(
                 parameter_label=parameter_info.label,
@@ -241,6 +262,7 @@ def _build_new_dense_group_specific_data(
                 groups_index=group_index,
                 groups_new=new_groups,
                 groups_n=factor_info.groups_n,
+                coordinates_new=coordinates_new,
             )
         )
 
@@ -257,6 +279,12 @@ def _build_new_dense_group_specific_predictors(
         for term_info in factor_plan.terms:
             term = term_info.term
             if term.is_intercept:
+                continue
+            if hasattr(term, "block"):
+                data_name = predictor_data_name(
+                    term.expr_name, ("__obs__", f"{term.expr_name}_data_dim"), model
+                )
+                data_dict[data_name] = term.block.prediction_design(data)[0]
                 continue
             term_value_name = predictor_data_name(
                 term.expr_name, ("__obs__", *term_info.expression_coords), model
@@ -278,6 +306,9 @@ def _build_new_sparse_group_specific_plans(
     for factor_info in parameter_info.group_specific_factors:
         representative = factor_info.terms[0].term
         group_index, new_groups = representative.term.eval_new_data_group_index(data)
+        coordinates_new = ()
+        if hasattr(representative, "block"):
+            _, coordinates_new = representative.block.prediction_design(data)
         predictors = {
             term_info.term.label: _new_group_specific_predictor(term_info, data)
             for term_info in factor_info.terms
@@ -292,6 +323,7 @@ def _build_new_sparse_group_specific_plans(
                 groups_new=new_groups,
                 groups_n=factor_info.groups_n,
                 predictors=predictors,
+                coordinates_new=coordinates_new,
             )
         )
 
@@ -352,6 +384,8 @@ def _new_group_specific_predictor(
     term_info: GroupSpecificTermInfo, data: pd.DataFrame
 ) -> np.ndarray:
     term = term_info.term
+    if hasattr(term, "block"):
+        return term.block.prediction_design(data)[0]
     if term.is_intercept:
         return np.ones(len(data))
 
@@ -417,6 +451,11 @@ def _create_new_group_coefficients(
     """Create unregistered population draws for newly identified group levels."""
     term = term_info.term
     term_dims = model.named_vars_to_dims[term.label]
+    if hasattr(term, "block"):
+        size = len(term.block.coordinates)
+        chol = model[f"{term.label}_cholesky"]
+        offset = pm.Normal.dist(shape=(n_new_groups, size))
+        return pt.dot(offset, chol.T)
     # Keep expression and response axes after replacing factor axes with new groups.
     tail_dims = term_dims[factor_ndim:]
     tail_shape = tuple(len(model.coords[dim]) for dim in tail_dims)

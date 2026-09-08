@@ -1,7 +1,10 @@
+import numpy as np
+
 from bambi.defaults import get_default_prior
 from bambi.priors.prior import Prior
 from bambi.terms import CommonTerm, GroupSpecificTerm, HSGPTerm, OffsetTerm
 from bambi.utils import is_hsgp_term
+from bambi.covariance import StructuredGroupSpecificTerm, warn_confounded_blocks
 
 
 class MarginalParameter:
@@ -69,8 +72,17 @@ class ConditionalParameter:
             noncentered = self.spec.noncentered
 
         for name, term in self.design.group.terms.items():
+            encoder = term.expr.name.split("(", 1)[0]
+            block = self.spec._covariance_blocks.get(encoder)  # pylint: disable=protected-access
+            if block is not None:
+                prior = priors.get(block.name)
+                self.terms[block.name] = StructuredGroupSpecificTerm(
+                    term, block, prior, self.prefix, noncentered
+                )
+                continue
             prior = priors.get(name, priors.get("group_specific", None))
             self.terms[name] = GroupSpecificTerm(term, prior, self.prefix, noncentered)
+        warn_confounded_blocks(self.group_specific_terms.values())
 
     def add_hsgp_terms(self, priors):
         for name, term in self.design.common.terms.items():
@@ -80,6 +92,12 @@ class ConditionalParameter:
 
     def build_priors(self):
         for term in self.terms.values():
+            if isinstance(term, StructuredGroupSpecificTerm):
+                scale = 1
+                if self.spec.family.name == "gaussian" and self.is_parent:
+                    scale = float(np.std(self.spec.response_term.data)) or 1
+                term.build_prior(scale)
+                continue
             if isinstance(term, GroupSpecificTerm):
                 kind = "group_specific"
             elif isinstance(term, CommonTerm) and term.kind == "intercept":
@@ -102,6 +120,8 @@ class ConditionalParameter:
         for name, term in self.terms.items():
             if name in priors:
                 term.prior = priors[name]
+            elif isinstance(term, StructuredGroupSpecificTerm):
+                continue
             elif isinstance(term, GroupSpecificTerm):
                 if group_specific is not None:
                     term.prior = group_specific

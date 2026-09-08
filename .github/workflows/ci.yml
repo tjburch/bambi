@@ -1,6 +1,7 @@
 name: Run CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -9,6 +10,7 @@ on:
       - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/ci.yml"
+      - "docs/examples/group_covariance_validation/**"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -16,6 +18,7 @@ on:
       - "tests/**"
       - "pyproject.toml"
       - ".github/workflows/ci.yml"
+      - "docs/examples/group_covariance_validation/**"
 
 jobs:
   test:

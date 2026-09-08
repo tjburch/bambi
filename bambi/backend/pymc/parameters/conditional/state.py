@@ -40,6 +40,7 @@ class DenseGroupSpecificFactorPlan:
     groups_index: np.ndarray
     groups_new: tuple[object, ...]
     groups_n: int
+    coordinates_new: tuple = field(default=(), kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -75,9 +76,13 @@ def make_sparse_matrix_data(parameter_label: str) -> SparseMatrixData:
 @dataclass
 class DenseGroupSpecificTermGraph:
     lookup: pt.Variable
+    contribution: pt.Variable | None = None
 
     def clone(self, memo: dict[pt.Variable, pt.Variable]) -> "DenseGroupSpecificTermGraph":
-        return DenseGroupSpecificTermGraph(lookup=memo[self.lookup])
+        return DenseGroupSpecificTermGraph(
+            lookup=memo[self.lookup],
+            contribution=memo[self.contribution] if self.contribution is not None else None,
+        )
 
 
 @dataclass

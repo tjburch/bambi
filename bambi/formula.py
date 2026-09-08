@@ -3,6 +3,7 @@ import warnings
 from typing import Sequence
 
 import formulae as fm
+from bambi.covariance import lower_covariance_formula
 
 
 class Formula:
@@ -57,7 +58,8 @@ class Formula:
         ValueError
             If the response term is not a plain name.
         """
-        response = fm.model_description(additional).response
+        lowered, _ = lower_covariance_formula(additional, {})
+        response = fm.model_description(lowered).response
 
         # There's a response in the formula
         if response is None:

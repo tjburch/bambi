@@ -15,6 +15,7 @@ from formulae.matrices import ResponseMatrix
 
 from bambi.backend import PyMCModel
 from bambi.config import config
+from bambi.covariance import StructuredGroupSpecificTerm, lower_covariance_formula
 from bambi.defaults import get_builtin_family
 from bambi.parameters import ConditionalParameter, MarginalParameter
 from bambi.families import Family
@@ -172,6 +173,28 @@ class Model:
         if isinstance(extra_namespace, dict):
             additional_namespace.update(extra_namespace)
 
+        main_formula, self._covariance_blocks = lower_covariance_formula(
+            self.formula.main, additional_namespace, data_columns=self.data.columns
+        )
+        extra_formulas = []
+        for name, extra_formula in zip(self.formula.additionals_lhs, self.formula.additionals):
+            lowered, blocks = lower_covariance_formula(
+                extra_formula,
+                additional_namespace,
+                prefix=f"{name}_",
+                data_columns=self.data.columns,
+            )
+            extra_formulas.append(lowered)
+            self._covariance_blocks.update(blocks)
+        if self._covariance_blocks and dropna:
+            descriptions = [fm.model_description(main_formula)] + [
+                fm.model_description(clean_formula_lhs(formula)) for formula in extra_formulas
+            ]
+            columns = set().union(*(description.var_names for description in descriptions))
+            self.data = self.data.dropna(subset=sorted(columns.intersection(self.data.columns)))
+            if self.data.empty:
+                raise ValueError("No complete observations remain for the structured model.")
+
         # Create family
         self._set_family(family, link)
 
@@ -185,7 +208,7 @@ class Model:
             # linear dependencies with the cutpoints.
             # Then the intercept is removed from the design matrix because of the cutpoints.
             design = fm.design_matrices(
-                self.formula.main + " + 1",
+                main_formula + " + 1",
                 self.data,
                 na_action,
                 1,
@@ -193,9 +216,7 @@ class Model:
             )
             design = remove_common_intercept(design)
         else:
-            design = fm.design_matrices(
-                self.formula.main, self.data, na_action, 1, additional_namespace
-            )
+            design = fm.design_matrices(main_formula, self.data, na_action, 1, additional_namespace)
 
         if design.response is None:
             raise ValueError(
@@ -233,7 +254,7 @@ class Model:
 
         ## Other parameters
         ### Conditional
-        for name, extra_formula in zip(self.formula.additionals_lhs, self.formula.additionals):
+        for name, extra_formula in zip(self.formula.additionals_lhs, extra_formulas):
             # Check 'name' is part of parameter values
             if name not in auxiliary_parameters:
                 raise ValueError(
@@ -539,7 +560,8 @@ class Model:
 
         if group_specific is not None:
             for term in parent_parameter.group_specific_terms.values():
-                term.prior = group_specific
+                if not isinstance(term, StructuredGroupSpecificTerm):
+                    term.prior = group_specific
 
         if priors is not None:
             # `normalized_priors` maps component names to their prior specifications:
@@ -683,7 +705,7 @@ class Model:
 
                 # Now add aliases for hyperpriors in group specific terms
                 for term in parent_parameter.group_specific_terms.values():
-                    if name in term.prior.args:
+                    if name in (term.prior if hasattr(term, "block") else term.prior.args):
                         term.hyperprior_alias = {name: alias}
                         is_used = True
 
@@ -720,7 +742,7 @@ class Model:
                             is_used = True
 
                         for term in parameter.group_specific_terms.values():
-                            if name in term.prior.args:
+                            if name in (term.prior if hasattr(term, "block") else term.prior.args):
                                 term.hyperprior_alias = {name: alias}
                                 is_used = True
 

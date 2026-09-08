@@ -67,8 +67,8 @@ jobs:
       CASE_ID: ${{ matrix.id }}
       MODE: ${{ matrix.mode }}
       FAMILY: ${{ matrix.family }}
-      MPLCONFIGDIR: ${{ runner.temp }}/covariance-matplotlib
-      PYTENSOR_FLAGS: base_compiledir=${{ runner.temp }}/covariance-pytensor
+      MPLCONFIGDIR: ${{ github.workspace }}/.scratch/covariance-matplotlib
+      PYTENSOR_FLAGS: base_compiledir=${{ github.workspace }}/.scratch/covariance-pytensor
     steps:
       - uses: actions/checkout@v5
         with:
@@ -103,7 +103,7 @@ jobs:
         run: Rscript "$VALIDATION/setup_reference.R"
       - uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/covariance-pytensor
+          path: ${{ github.workspace }}/.scratch/covariance-pytensor
           key: covariance-pytensor-${{ matrix.mode }}-${{ hashFiles('bambi/**/*.py', 'docs/examples/group_covariance_validation/requirements.txt') }}
       - name: Native brms or four-block Stan comparison
         if: inputs.suite == 'references' || inputs.suite == 'compile-smoke'

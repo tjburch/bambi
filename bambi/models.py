@@ -208,6 +208,15 @@ class Model:
                     "Nonlinear expression names must not be likelihood parameter names: "
                     f"{sorted(reserved_symbols)}."
                 )
+            nonlinear_names = set(self.formula.additionals_lhs) - set(
+                self.family.auxiliary_parameters
+            )
+            collisions = nonlinear_names & set(self.data.columns)
+            if collisions:
+                raise ValueError(
+                    "Nonlinear parameter names must not also be data columns: "
+                    f"{sorted(collisions)}."
+                )
             self.data = prepare_nonlinear_data(
                 self.formula,
                 nonlinear_expression,
@@ -374,12 +383,6 @@ class Model:
         if unused:
             raise ValueError(
                 f"Nonlinear parameter formula(s) not used by the expression: {sorted(unused)}."
-            )
-
-        collisions = set(names) & set(self.data.columns)
-        if collisions:
-            raise ValueError(
-                "Nonlinear parameter names must not also be data columns: " f"{sorted(collisions)}."
             )
 
         predictors = {}
@@ -1507,6 +1510,20 @@ class Model:
 
     @property
     def conditional_parameters(self):
+        """Return likelihood parameters defined by formulas.
+
+        Returns
+        -------
+        dict of str to ConditionalParameter or NonlinearParameter
+            Likelihood parameters keyed by their original names. A nonlinear model's parent
+            is a ``NonlinearParameter``, which has no additive terms or design matrix.
+            Intermediate nonlinear predictors are excluded.
+
+        See Also
+        --------
+        additive_parameters : Parameters with additive terms and design matrices, including
+            nonlinear predictors.
+        """
         return {
             k: v
             for k, v in self.parameters.items()

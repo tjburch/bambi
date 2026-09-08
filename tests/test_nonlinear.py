@@ -255,6 +255,19 @@ def test_validation_errors(formula, error):
         bmb.Model(formula, linear_data())
 
 
+@pytest.mark.parametrize(
+    "additionals",
+    [("a ~ 1 + b", "b ~ 1"), ("a ~ 1", "b ~ 1", "sigma ~ 1 + b")],
+)
+def test_data_name_collision_is_reported_before_parameter_dependency(additionals):
+    data = linear_data()
+    data["b"] = 1.0
+    formula = bmb.Formula("y ~ a + b * x", *additionals, nonlinear=True)
+
+    with pytest.raises(ValueError, match=r"must not also be data columns: \['b'\]"):
+        bmb.Model(formula, data)
+
+
 def test_malformed_expression():
     formula = bmb.Formula("y ~ a +", "a ~ 1", nonlinear=True)
     with pytest.raises(ValueError, match="Malformed nonlinear expression"):

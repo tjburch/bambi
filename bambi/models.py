@@ -24,6 +24,14 @@ from bambi.families.builtin import (
 )
 from bambi.families.types import DimType
 from bambi.formula import Formula, check_ordinal_formula
+from bambi.nonlinear import (
+    NonlinearExpression,
+    NonlinearParameter,
+    SUPPORTED_FUNCTIONS,
+    prepare_nonlinear_data,
+    resolve_nonlinear_data_names,
+    split_nonlinear_formula,
+)
 from bambi.priors import Prior, scale_priors
 from bambi.terms import ResponseTerm
 from bambi.transformations import transformations_namespace
@@ -50,6 +58,7 @@ class Model:
     ----------
     formula : str or Formula
         A model description written using the formula syntax from the `formulae` library.
+        Nonlinear models require a `Formula` created with `nonlinear=True`.
     data : pd.DataFrame
         A pandas dataframe containing the data on which the model will be fit, with column
         names matching variables defined in the formula.
@@ -71,12 +80,16 @@ class Model:
         `bmb.config["UNUSED_PRIORS"]` to `"error"` or `"ignore"` to change that.
         Bare term priors can be combined with priors nested under the parent component. If both
         specify the same term, the nested parent prior takes precedence.
+        For nonlinear models, each nonlinear parameter name maps to its own term-prior dictionary.
+        Nonlinear predictor priors are not scaled using the response.
+        Explicit priors are recommended.
     link : str or dict of str to str, optional
         The name of the link function to use. Valid names are `"cloglog"`, `"identity"`,
         `"inverse_squared"`, `"inverse"`, `"log"`, `"logit"`, `"probit"`, and
         `"softmax"`. Not all the link functions can be used with all the families.
         If a dictionary, keys are the names of the target parameters and the values are the names
         of the link functions.
+        For nonlinear formulas, the parent inverse link is applied once to the complete expression.
     categorical : str or list of str, optional
         The names of any variables to treat as categorical. Can be either a single variable
         name, or a list of names. If categorical is `None`, the data type of the columns in
@@ -133,6 +146,7 @@ class Model:
     ):
         # attributes that are set later
         self.parameters = {}
+        self._nonlinear_predictors = {}
         self.built = False  # build()
 
         # build() will loop over this, calling _set_priors()
@@ -176,7 +190,35 @@ class Model:
         self._convert_deprecated_c_response()
 
         ## Main parameter
-        if isinstance(self.family, ORDINAL_FAMILIES):
+        if self.formula.nonlinear:
+            if self.family.RESPONSE_NDIM != 0:
+                raise ValueError("Nonlinear formulas currently require a univariate response.")
+            if self.family.get_param_spec(self.family.likelihood.parent).ndim != 0:
+                raise ValueError("Nonlinear formulas currently require a scalar parent parameter.")
+
+            response_formula, nonlinear_source = split_nonlinear_formula(self.formula.main)
+            nonlinear_expression = NonlinearExpression.parse(nonlinear_source)
+            reserved_symbols = (
+                nonlinear_expression.symbols
+                & set(self.formula.additionals_lhs)
+                & set(self.family.likelihood.params)
+            )
+            if reserved_symbols:
+                raise ValueError(
+                    "Nonlinear expression names must not be likelihood parameter names: "
+                    f"{sorted(reserved_symbols)}."
+                )
+            self.data = prepare_nonlinear_data(
+                self.formula,
+                nonlinear_expression,
+                self.data,
+                dropna,
+                parameter_names=self.family.likelihood.params,
+            )
+            design = fm.design_matrices(
+                response_formula, self.data, na_action, 1, additional_namespace
+            )
+        elif isinstance(self.family, ORDINAL_FAMILIES):
             self.formula = check_ordinal_formula(self.formula)
             # Notice the intercept is added so formulae constraints categorical predictors, avoiding
             # linear dependencies with the cutpoints.
@@ -202,12 +244,16 @@ class Model:
 
         # Merge bare term priors with nested parent priors; nested entries take precedence.
         parent_name = self.family.likelihood.parent
-        parent_priors = {name: prior for name, prior in priors.items() if name != parent_name}
-        if parent_name in priors:
-            parent_priors.update(priors[parent_name])
+        parent_priors = {}
+        if not self.formula.nonlinear:
+            parent_priors = {name: prior for name, prior in priors.items() if name != parent_name}
+            if parent_name in priors:
+                parent_priors.update(priors[parent_name])
 
         # Add response
         self.response_term = ResponseTerm(design.response)
+        if self.formula.nonlinear and self.response_term.data.ndim != 1:
+            raise ValueError("Nonlinear formulas currently require one observed response.")
         self._response_component = _ResponseComponentAdapter(
             self.response_term, design.response, self
         )
@@ -221,16 +267,35 @@ class Model:
             }
 
         # Add parent parameter
-        self.parameters[self.family.likelihood.parent] = ConditionalParameter(
-            self.family.likelihood.parent, design, parent_priors, self, is_parent=True
-        )
+        if self.formula.nonlinear:
+            self._nonlinear_predictors = self._make_nonlinear_predictors(
+                nonlinear_expression,
+                priors,
+                na_action,
+                additional_namespace,
+            )
+            data_names = resolve_nonlinear_data_names(
+                nonlinear_expression, self._nonlinear_predictors, self.data
+            )
+            self.parameters[parent_name] = NonlinearParameter(
+                parent_name,
+                nonlinear_expression,
+                data_names,
+            )
+        else:
+            self.parameters[parent_name] = ConditionalParameter(
+                parent_name, design, parent_priors, self, is_parent=True
+            )
 
         # Get auxiliary parameters, so we add either conditional or marginal parameters
         auxiliary_parameters = list(self.family.auxiliary_parameters)
 
         ## Other parameters
         ### Conditional
-        for name, extra_formula in zip(self.formula.additionals_lhs, self.formula.additionals):
+        additional_formulas = zip(self.formula.additionals_lhs, self.formula.additionals)
+        for name, extra_formula in additional_formulas:
+            if self.formula.nonlinear and name in self.nonlinear_predictors:
+                continue
             # Check 'name' is part of parameter values
             if name not in auxiliary_parameters:
                 raise ValueError(
@@ -249,6 +314,8 @@ class Model:
 
             # If priors were not passed, pass an empty dictionary
             parameter_priors = priors.get(name, {})
+            if not isinstance(parameter_priors, dict):
+                raise ValueError(f"Priors for conditional parameter '{name}' must be a dictionary.")
 
             # Create conditional parameter
             self.parameters[name] = ConditionalParameter(
@@ -268,15 +335,69 @@ class Model:
 
         # Validate per-parameter noncentered dict, now that all parameters are known.
         if isinstance(self.noncentered, dict):
-            unknown = set(self.noncentered) - set(self.parameters)
+            valid_parameters = set(self.parameters) | set(self.nonlinear_predictors)
+            unknown = set(self.noncentered) - valid_parameters
             if unknown:
                 raise ValueError(
                     f"Unknown parameter name(s) in `noncentered`: {sorted(unknown)}. "
-                    f"Valid parameter names for this model: {sorted(self.parameters)}."
+                    f"Valid parameter names for this model: {sorted(valid_parameters)}."
                 )
 
         # Build priors
         self._build_priors()
+
+    def _make_nonlinear_predictors(self, expression, priors, na_action, additional_namespace):
+        formulas = {
+            name: formula
+            for name, formula in zip(self.formula.additionals_lhs, self.formula.additionals)
+            if name not in self.family.auxiliary_parameters
+        }
+        names = tuple(formulas)
+        if not names:
+            raise ValueError("Nonlinear formulas require at least one parameter formula.")
+
+        reserved = set(names) & set(self.family.likelihood.params)
+        if reserved:
+            raise ValueError(
+                "Nonlinear parameter names must not be likelihood parameter names: "
+                f"{sorted(reserved)}."
+            )
+
+        function_names = set(names) & SUPPORTED_FUNCTIONS
+        if function_names:
+            raise ValueError(
+                "Nonlinear parameter names must not be supported function names: "
+                f"{sorted(function_names)}."
+            )
+
+        unused = set(names) - expression.symbols
+        if unused:
+            raise ValueError(
+                f"Nonlinear parameter formula(s) not used by the expression: {sorted(unused)}."
+            )
+
+        collisions = set(names) & set(self.data.columns)
+        if collisions:
+            raise ValueError(
+                "Nonlinear parameter names must not also be data columns: " f"{sorted(collisions)}."
+            )
+
+        predictors = {}
+        for name, formula in formulas.items():
+            design = fm.design_matrices(
+                clean_formula_lhs(formula),
+                self.data,
+                na_action,
+                1,
+                additional_namespace,
+            )
+            parameter_priors = priors.get(name, {})
+            if not isinstance(parameter_priors, dict):
+                raise ValueError(f"Priors for nonlinear parameter '{name}' must be a dictionary.")
+            predictors[name] = ConditionalParameter(
+                name, design, parameter_priors, self, is_parent=False
+            )
+        return predictors
 
     def fit(
         self,
@@ -469,7 +590,7 @@ class Model:
         self._set_priors(**self._added_priors)
 
         # Prepare all priors
-        for parameter in self.conditional_parameters.values():
+        for parameter in self.additive_parameters.values():
             parameter.build_priors()
 
         for name, parameter in self.marginal_parameters.items():
@@ -495,6 +616,25 @@ class Model:
         if behavior == "ignore":
             return
 
+        if self.formula.nonlinear:
+            valid = set(self.marginal_parameters) | set(self.additive_parameters)
+            unused = []
+            for name, value in priors.items():
+                if name not in valid:
+                    unused.append(name)
+                elif name in self.additive_parameters:
+                    if not isinstance(value, dict):
+                        raise ValueError(
+                            f"Priors for conditional parameter '{name}' must be a dictionary."
+                        )
+                    nested_valid = set(self.additive_parameters[name].terms) | {
+                        "common",
+                        "group_specific",
+                    }
+                    unused.extend(f"{name}.{n}" for n in sorted(set(value) - nested_valid))
+            self._report_unused_priors(unused, valid, behavior)
+            return
+
         parent_name = self.family.likelihood.parent
         valid = (
             set(self.parameters)
@@ -510,6 +650,10 @@ class Model:
                 nested_valid = set(self.parameters[name].terms) | {"common", "group_specific"}
                 unused.extend(f"{name}.{n}" for n in sorted(set(value) - nested_valid))
 
+        self._report_unused_priors(unused, valid, behavior)
+
+    @staticmethod
+    def _report_unused_priors(unused, valid, behavior):
         if not unused:
             return
 
@@ -527,6 +671,22 @@ class Model:
         """
         # Arguments `common` and `group_specific` only affect the parent parameter.
         parent_name = self.family.likelihood.parent
+
+        if self.formula.nonlinear:
+            if common is not None or group_specific is not None:
+                raise ValueError(
+                    "Use nested priors for nonlinear parameters instead of 'common' or "
+                    "'group_specific'."
+                )
+            if priors is not None:
+                normalized_priors = deepcopy(priors)
+                for name, parameter in self.additive_parameters.items():
+                    if name in normalized_priors:
+                        parameter.update_priors(normalized_priors[name])
+                for name, parameter in self.marginal_parameters.items():
+                    if name in normalized_priors:
+                        parameter.update_priors(normalized_priors[name])
+            return
 
         # 'common' and 'group_specific' only apply to the parent parameter
         parent_parameter = self.parameters[self.family.likelihood.parent]
@@ -633,8 +793,14 @@ class Model:
 
         Parameters
         ----------
-        aliases : dict of str to str
-            A dictionary where key represents the original term name and the value is the alias.
+        aliases : dict
+            Map original names to aliases. For distributional and nonlinear models, use nested
+            dictionaries keyed by modeled parameter names. Inside each dictionary, map term names
+            or the parameter's own name to strings. Response and marginal parameter aliases use
+            strings directly. For example, ``{"a": {"a": "baseline", "Intercept": "a0"},
+            "mu": {"mu": "mean"}, "y": "response"}`` aliases a nonlinear predictor, its
+            intercept, the parent, and the response. Formulas and prior dictionaries continue to
+            use original names. The model must be rebuilt after setting aliases.
 
         Returns
         -------
@@ -655,7 +821,8 @@ class Model:
         #        * Here, names are term names, and values are their aliases
         #     * There's unavoidable redundancy in the response name
         #       "sigma": {"sigma": "alias"}}
-        if len(self.conditional_parameters) == 1:  # pylint: disable=too-many-nested-blocks
+        # pylint: disable=too-many-nested-blocks
+        if len(self.conditional_parameters) == 1 and not self.formula.nonlinear:
             parent_parameter = self.parameters[self.family.likelihood.parent]
             for name, alias in aliases.items():
                 assert isinstance(alias, str)
@@ -693,6 +860,7 @@ class Model:
                 if is_used is False:
                     missing_names.append(name)
         else:
+            modeled_parameters = self.conditional_parameters | self.nonlinear_predictors
             for parameter_name, parameter_aliases in aliases.items():
                 if parameter_name in self.marginal_parameters:
                     assert isinstance(parameter_aliases, str)
@@ -702,12 +870,15 @@ class Model:
                     self.response_term.alias = parameter_aliases
                 else:
                     assert isinstance(parameter_aliases, dict)
-                    assert parameter_name in self.conditional_parameters
-                    parameter = self.conditional_parameters[parameter_name]
+                    if parameter_name not in modeled_parameters:
+                        missing_names.append(parameter_name)
+                        continue
+                    parameter = modeled_parameters[parameter_name]
                     for name, alias in parameter_aliases.items():
+                        assert isinstance(alias, str), "Alias must be a string"
                         is_used = False
 
-                        if name in parameter.terms:
+                        if name in getattr(parameter, "terms", {}):
                             parameter.terms[name].alias = alias
                             is_used = True
 
@@ -716,7 +887,7 @@ class Model:
                             parameter.alias = alias
                             is_used = True
 
-                        for term in parameter.group_specific_terms.values():
+                        for term in getattr(parameter, "group_specific_terms", {}).values():
                             if name in term.prior.args:
                                 term.hyperprior_alias = {name: alias}
                                 is_used = True
@@ -1251,19 +1422,28 @@ class Model:
             output_list.append(key.rjust(width) + spacer.join(listify(value)))
 
         # Build priors section. Make sure the parent parameter goes first.
-        priors_dict = {parent_name: make_priors_summary(parent_parameter)}
+        if self.formula.nonlinear:
+            priors_dict = {
+                parameter.label: make_priors_summary(parameter)
+                for parameter in self.additive_parameters.values()
+            }
+        else:
+            priors_dict = {parent_name: make_priors_summary(parent_parameter)}
 
-        for name, parameter in self.conditional_parameters.items():
-            if parameter.is_parent:
-                continue
-            priors_dict[name] = make_priors_summary(parameter)
+            for name, parameter in self.conditional_parameters.items():
+                if parameter.is_parent:
+                    continue
+                priors_dict[name] = make_priors_summary(parameter)
 
         if self.marginal_parameters:
             aux_str = "\n".join(
                 [prior_repr(parameter) for parameter in self.marginal_parameters.values()]
             )
             aux_str = "Auxiliary parameters\n" + wrapify(indentify(aux_str, 4), 100, 4)
-            priors_dict[parent_name] = priors_dict[parent_name] + "\n\n" + aux_str
+            if self.formula.nonlinear:
+                priors_dict[parent_parameter.label] = aux_str
+            else:
+                priors_dict[parent_name] = priors_dict[parent_name] + "\n\n" + aux_str
 
         for key, value in priors_dict.items():
             priors_dict[key] = indentify(value, 4)
@@ -1327,7 +1507,50 @@ class Model:
 
     @property
     def conditional_parameters(self):
-        return {k: v for k, v in self.parameters.items() if isinstance(v, ConditionalParameter)}
+        return {
+            k: v
+            for k, v in self.parameters.items()
+            if isinstance(v, (ConditionalParameter, NonlinearParameter))
+        }
+
+    @property
+    def nonlinear_predictors(self):
+        """Return the additive predictors used in the nonlinear parent expression.
+
+        Returns
+        -------
+        dict of str to ConditionalParameter
+            Predictors keyed by original formula names, regardless of aliases. Empty for
+            ordinary models. These predictors are separate from likelihood parameters.
+
+        Examples
+        --------
+        For ``Formula("y ~ a * x", "a ~ 1", nonlinear=True)``, retrieve the predictor
+        with ``model.nonlinear_predictors["a"]``.
+        """
+        return self._nonlinear_predictors.copy()
+
+    @property
+    def additive_parameters(self):
+        """Return all parameters constructed from ordinary additive formulas.
+
+        Returns
+        -------
+        dict of str to ConditionalParameter
+            Conditional likelihood parameters and nonlinear predictors, keyed by original
+            formula names. Excludes the composed nonlinear parent and marginal parameters.
+
+        Examples
+        --------
+        For a nonlinear Gaussian model with ``a ~ 1`` and ``sigma ~ x``, this mapping
+        contains ``"a"`` and ``"sigma"``; ``model.parameters`` contains ``"mu"`` and
+        ``"sigma"``.
+        """
+        return {
+            name: parameter
+            for name, parameter in self.conditional_parameters.items()
+            if isinstance(parameter, ConditionalParameter)
+        } | self.nonlinear_predictors
 
 
 def with_categorical_cols(data: pd.DataFrame, columns) -> pd.DataFrame:
@@ -1346,7 +1569,7 @@ def with_categorical_cols(data: pd.DataFrame, columns) -> pd.DataFrame:
 
 def prior_repr(term) -> str:
     """Get a string representation of a Bambi term."""
-    return f"{term.name} ~ {term.prior}"
+    return f"{term.label} ~ {term.prior}"
 
 
 def hsgp_repr(term) -> str:

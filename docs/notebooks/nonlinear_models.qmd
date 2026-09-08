@@ -1,0 +1,132 @@
+---
+title: "Nonlinear models"
+---
+
+Nonlinear models encode a scientific functional form while allowing its parameters to vary with predictors or groups. For example, an exponential-decay model can use
+
+$$
+y_i = a_i + b_i e^{-k_i x_i} + \epsilon_i.
+$$
+
+It is worth noting that this differs from models like splines, GAMs, GPs, etc. which are often called "nonlinear," but rather are estimating an unknown smooth function of `x`. By contrast, a nonlinear model here uses scientific knowledge to specify the functinal form and estimates its interpretable parameters.
+
+## Exponential decay
+
+An example of exponential decay using a nonlinear model in Bambi:
+
+```python
+import bambi as bmb
+import numpy as np
+import pandas as pd
+
+rng = np.random.default_rng(123)
+x = rng.uniform(0, 4, 120)
+treatment = rng.integers(0, 2, 120)
+a = 0.5 + 0.3 * treatment
+y = a + 1.8 * np.exp(-0.7 * x) + rng.normal(0, 0.15, 120)
+data = pd.DataFrame({"y": y, "x": x, "treatment": treatment})
+
+formula = bmb.Formula(
+    "y ~ a + b * exp(-k * x)",
+    "a ~ 1 + treatment",
+    "b ~ 1",
+    "k ~ 1",
+    nonlinear=True,
+)
+
+priors = {
+    "a": {
+        "Intercept": bmb.Prior("Normal", mu=0, sigma=1),
+        "treatment": bmb.Prior("Normal", mu=0, sigma=1),
+    },
+    "b": {"Intercept": bmb.Prior("Normal", mu=1.5, sigma=1)},
+    "k": {"Intercept": bmb.Prior("LogNormal", mu=np.log(0.7), sigma=0.5)},
+}
+
+model = bmb.Model(formula, data, priors=priors)
+idata = model.fit()
+model.predict(idata, kind="response")
+```
+
+Each additional formula uses the ordinary Bambi term and prior machinery. A parameter can also contain group-specific effects, for example:
+
+```python
+formula = bmb.Formula(
+    "y ~ a + b * exp(-k * x)",
+    "a ~ 1 + (1 | subject)",
+    "b ~ 1",
+    "k ~ 1",
+    nonlinear=True,
+)
+```
+
+For prediction on new observations, pass every variable used by the nonlinear expression and its parameter formulas:
+
+```python
+new_data = pd.DataFrame({"x": [0.5, 1.5], "treatment": [0, 1]})
+predictions = model.predict(idata, data=new_data, kind="response", inplace=False)
+```
+
+The main right-hand side is an arithmetic expression with no implicit intercept. For example, `y ~ a + x` adds the observed `x` with coefficient one. To estimate that coefficient, use `y ~ a + b * x` with `a ~ 1` and `b ~ 1`. A literal `1` in the main expression is the numeric value one; in an additional parameter formula, `1` retains its ordinary intercept meaning.
+
+The implementation currently supports one univariate response and one nonlinear expression for a scalar parent parameter. Responses encoded as multiple columns, including Binomial count/trial pairs and censored, truncated, or weighted responses, are not supported. Nonlinear parameters must be explicitly modeled and cannot depend on one another. Supported operations are `+`, `-`, `*`, `/`, `**`, `exp`, `log`, and `sqrt`. Explicit, scientifically meaningful priors are strongly recommended because nonlinear models can be weakly identified.
+
+Nonlinear predictor coefficients do not receive response-based automatic prior scaling, even when `auto_scale=True`, further reason to set priors on the scale of each scientific parameter. Automatic scaling still applies to marginal likelihood parameters such as Gaussian `sigma`.
+
+By default, missing values in the response, parameter formulas, or expression inputs raise an error. With `dropna=True`, Bambi removes incomplete rows once across all these inputs, so every part of the model uses the same observations. Missing values in unused columns do not remove rows. The retained rows are available in `model.data`. Prediction data must be complete; prediction does not drop rows, even if the model was fitted with `dropna=True`.
+
+## Auxiliary formulas
+
+The mean curve and observation noise can have different predictors. Additional formulas whose left-hand sides name family auxiliary parameters use ordinary Bambi formulas:
+
+```python
+noise_formula = bmb.Formula(
+    "y ~ a + b * exp(-k * x)",
+    "a ~ 1 + treatment",
+    "b ~ 1",
+    "k ~ 1",
+    "sigma ~ 1 + treatment",
+    nonlinear=True,
+)
+```
+
+For a Gaussian model, `sigma` uses its usual log link, so this formula describes log standard deviation. Supply its priors under `priors["sigma"]`, for example a dictionary with `Intercept` and `treatment` entries. Common and group-specific effects use the existing auxiliary-parameter machinery. Unmodeled auxiliaries remain marginal parameters.
+
+Auxiliary formulas can use observed covariates, but cannot depend on nonlinear predictors or other modeled parameters. The parent expression cannot refer to a modeled auxiliary parameter. Missing values in auxiliary predictors follow the same shared row-filtering rule described above.
+
+## Parent links
+
+The nonlinear expression defines the parent on the family's **link scale**, just like an ordinary Bambi formula. The backend applies the inverse link once after composing the expression. For a Gaussian identity link, the expression directly defines the mean. For a Poisson log link,
+
+```python
+count_formula = bmb.Formula(
+    "count ~ a + b * exp(-x)",
+    "a ~ 1",
+    "b ~ 1",
+    nonlinear=True,
+)
+```
+
+used with `family="poisson"` means $\mu_i = \exp(a_i + b_i \exp(-x_i))$. For a Bernoulli logit link, the inverse logit converts the expression to a probability. Select a supported alternative link through the usual `Model(link=...)` argument. Backend-compatible custom scalar links also follow the existing `Link` API.
+
+Nonlinear predictors such as `a` and `b` keep identity links; only the composed parent receives the family link transformation. Categorical and ordinal parents remain unsupported because their likelihood parameters are vectors.
+
+## Aliases
+
+Aliases change displayed and posterior variable names without changing expression symbols or prior keys. Use nested mappings for the parent, nonlinear predictors, and modeled auxiliaries. Responses and marginal auxiliaries take string aliases:
+
+```python
+model.set_alias({
+    "y": "outcome",
+    "mu": {"mu": "mean_curve"},
+    "a": {"a": "baseline", "Intercept": "baseline_intercept"},
+    "sigma": "residual_sd",
+})
+idata = model.fit()
+```
+
+Here `sigma` is marginal. If it has a formula, use a mapping such as `{"sigma": {"sigma": "noise", "Intercept": "noise_intercept"}}` instead. Existing term and group-hyperprior alias conventions also apply. Set aliases before fitting; if aliases change after building, rebuild and fit again before using posterior samples with the new names.
+
+## Remaining limits
+
+The `interpret` API does not yet support nonlinear models. Use `Model.predict()` with explicit data instead.

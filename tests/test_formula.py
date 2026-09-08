@@ -42,3 +42,16 @@ def test_formula_repr():
 
     assert repr(f1) == "Formula('y ~ x')"
     assert repr(f2) == "Formula('y ~ x', 'sigma ~ 1', 'gamma ~ x')"
+
+
+def test_nonlinear_formula_repr():
+    formula = bmb.Formula("y ~ a + b * x", "a ~ 1", "b ~ 1", nonlinear=True)
+
+    assert formula.nonlinear is True
+    assert str(formula) == "Formula(y ~ a + b * x, a ~ 1, b ~ 1, nonlinear=True)"
+    assert repr(formula) == "Formula('y ~ a + b * x', 'a ~ 1', 'b ~ 1', nonlinear=True)"
+
+
+def test_nonlinear_formula_rejects_duplicate_parameters():
+    with pytest.raises(ValueError, match="Duplicate nonlinear parameter"):
+        bmb.Formula("y ~ a", "a ~ 1", "a ~ x", nonlinear=True)

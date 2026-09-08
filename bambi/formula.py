@@ -18,12 +18,36 @@ class Formula:
         A model description written using the formula syntax from the `formulae` library.
     *additionals : tuple of str
         Additional formulas that describe model parameters rather than a response variable.
+    nonlinear : bool, optional
+        If `True`, the right-hand side of the main formula is a nonlinear expression and each
+        additional formula describes either one parameter used by that expression or an
+        ordinary auxiliary likelihood parameter, such as `sigma ~ z`.
+        The expression is on the parent parameter's link scale. The family's inverse link is
+        applied once to the complete expression. Its separately modeled parameters use identity
+        links.
+
+    Examples
+    --------
+    Model an exponential decay with three separately modeled parameters:
+
+    >>> Formula("y ~ a + b * exp(-k * x)", "a ~ 1 + z", "b ~ 1", "k ~ 1", nonlinear=True)
+    Formula('y ~ a + b * exp(-k * x)', 'a ~ 1 + z', 'b ~ 1', 'k ~ 1', nonlinear=True)
     """
 
-    def __init__(self, formula: str, *additionals: str):
+    def __init__(self, formula: str, *additionals: str, nonlinear: bool = False):
+        if not isinstance(nonlinear, bool):
+            raise TypeError("'nonlinear' must be a boolean.")
         self.additionals_lhs = []
         self.main = formula
+        self.nonlinear = nonlinear
         self.additionals = self.check_additionals(additionals)
+
+        if self.nonlinear:
+            duplicates = {
+                name for name in self.additionals_lhs if self.additionals_lhs.count(name) > 1
+            }
+            if duplicates:
+                raise ValueError(f"Duplicate nonlinear parameter formula(s): {sorted(duplicates)}.")
 
     def check_additionals(self, additionals: Sequence[str]):
         """Check if the additional formulas match the expected format
@@ -82,11 +106,15 @@ class Formula:
     def __str__(self):
         formulas = [self.main] + list(self.additionals)
         middle = ", ".join(formulas)
+        if self.nonlinear:
+            middle += ", nonlinear=True"
         return f"Formula({middle})"
 
     def __repr__(self):
         formulas = [self.main] + list(self.additionals)
         middle = ", ".join([f"'{formula}'" for formula in formulas])
+        if self.nonlinear:
+            middle += ", nonlinear=True"
         return f"Formula({middle})"
 
 

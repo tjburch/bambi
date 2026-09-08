@@ -188,7 +188,7 @@ def get_model_terms(model: Model) -> dict:
         A dictionary containing all terms from the model's conditional parameters.
     """
     terms = {}
-    for parameter in model.conditional_parameters.values():
+    for parameter in model.additive_parameters.values():
         if parameter.design.common:
             terms.update(parameter.design.common.terms)
 

@@ -60,7 +60,8 @@ Inspect saved brms `generated.stan` and `standata.rds` before accepting equivale
 The CI installer uses the job-scoped GitHub token for CmdStanR downloads and
 preserves the binary repository configured by `setup-r`. RStan 2.32.7 and
 StanHeaders 2.32.10 are pinned together because brms imports RStan even when
-sampling uses CmdStanR. loo 2.8.0 preserves compatibility with posterior 1.6.1.
+sampling uses CmdStanR. loo 2.8.0 and bayesplot 1.13.0 preserve compatibility
+with posterior 1.6.1.
 Setup checks package versions and loadability before
 building CmdStan; installation warnings must not silently bypass failed packages.
 

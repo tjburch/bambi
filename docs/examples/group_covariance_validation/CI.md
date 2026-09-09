@@ -88,9 +88,11 @@ the calibration denominator. See [SBC details](SBC.md).
 
 ## Required follow-through
 
-Hosted smoke runs must confirm the R export names, quantile MCSE APIs, compilation,
-sampler diagnostics and environment installation. Fix failures before posterior
-comparisons. Re-run affected cases after code changes, with matching identities.
+Hosted compile-smoke runs check environment installation, Bambi prior prediction,
+and R/Stan compilation and prior-only sampling. They do not exercise nutpie,
+R summary export, quantile MCSE APIs, posterior diagnostics or comparisons.
+The references and samplers stages must verify those paths after smoke passes.
+Re-run affected cases after code changes, with matching identities.
 
 The independent joint-prediction check validates conditional means and covariances
 at shared latent/covariance values. It does not replace held-out posterior refits or

@@ -9,7 +9,7 @@ has_version <- function(package, version) {
   tryCatch(as.character(packageVersion(package)) == version, error = function(e) FALSE)
 }
 # RStan is a brms import even when fits use CmdStanR. Keep its headers compatible.
-versions <- c(posterior = "1.6.1", jsonlite = "2.0.0", StanHeaders = "2.32.10",
+versions <- c(posterior = "1.6.1", loo = "2.8.0", jsonlite = "2.0.0", StanHeaders = "2.32.10",
               rstan = "2.32.7", brms = "2.23.0")
 for (package in names(versions)) {
   if (!has_version(package, versions[[package]])) {
@@ -23,8 +23,9 @@ for (package in names(versions)) {
 if (!has_version("cmdstanr", "0.9.0")) {
   remotes::install_github("stan-dev/cmdstanr@v0.9.0", dependencies = NA, upgrade = "never")
 }
-for (package in names(c(versions, cmdstanr = "0.9.0"))) {
-  version <- c(versions, cmdstanr = "0.9.0")[[package]]
+versions <- c(versions, cmdstanr = "0.9.0")
+for (package in names(versions)) {
+  version <- versions[[package]]
   if (!has_version(package, version) || !requireNamespace(package, quietly = TRUE)) {
     stop("Reference package is missing, unloadable, or has the wrong version: ", package)
   }

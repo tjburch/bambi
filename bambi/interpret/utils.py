@@ -234,9 +234,7 @@ def get_model_covariates(model: Model) -> np.ndarray:
         elif hasattr(term, "factor"):
             covariates.extend(list(term.var_names))
 
-    # Inputs referenced directly by a nonlinear expression are not represented by
-    # additive formula terms. Model construction has already resolved and validated
-    # these inputs, so use the names recorded on the nonlinear likelihood parameter.
+    # Include observed inputs used directly in nonlinear expressions.
     for parameter in model.parameters.values():
         if isinstance(parameter, NonlinearParameter):
             covariates.extend(parameter.data_names)

@@ -234,7 +234,6 @@ def get_model_covariates(model: Model) -> np.ndarray:
         elif hasattr(term, "factor"):
             covariates.extend(list(term.var_names))
 
-    # Include observed inputs used directly in nonlinear expressions.
     for parameter in model.parameters.values():
         if isinstance(parameter, NonlinearParameter):
             covariates.extend(parameter.data_names)

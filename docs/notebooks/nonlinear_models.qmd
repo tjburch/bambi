@@ -121,6 +121,15 @@ idata = model.fit()
 
 Here `sigma` is marginal. If it has a formula, use a mapping such as `{"sigma": {"sigma": "noise", "Intercept": "noise_intercept"}}` instead. Existing term and group-hyperprior alias conventions also apply. Set aliases before fitting; if aliases change after building, rebuild and fit again before using posterior samples with the new names.
 
-## Remaining limits
+## Interpret predictions
 
-The `interpret` API does not yet support nonlinear models. Use `Model.predict()` with explicit data instead.
+Nonlinear models work with the `interpret` API. Variables that appear directly in the nonlinear
+expression, as well as variables in nonlinear parameter formulas, can be used for predictions,
+comparisons, and slopes.
+
+```python
+from bambi import interpret
+
+interpret.predictions(model, idata, conditional="x")
+interpret.plot_predictions(model, idata, conditional="x")
+```

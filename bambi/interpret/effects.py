@@ -35,14 +35,6 @@ from bambi.models import Model
 from bambi.utils import as_dataset
 
 
-def _check_model_supported(model: Model) -> None:
-    if model.formula.nlpars:
-        raise NotImplementedError(
-            "The interpret API does not support nonlinear models yet. "
-            "Use Model.predict() with explicit prediction data instead."
-        )
-
-
 def _warn_deprecated_sample_new_groups(sample_new_groups: bool | None) -> None:
     if sample_new_groups is not None:
         warnings.warn(
@@ -480,10 +472,7 @@ def predictions(
     ------
     ValueError
         If any prob value is not between 0 and 1.
-    NotImplementedError
-        If the model uses a nonlinear formula.
     """
-    _check_model_supported(model)
     _warn_deprecated_sample_new_groups(sample_new_groups)
 
     prob = validate_prob(prob)
@@ -592,10 +581,7 @@ def plot_predictions(
     ------
     ValueError
         If more than 3 conditional variables are provided without averaging.
-    NotImplementedError
-        If the model uses a nonlinear formula.
     """
-    _check_model_supported(model)
     _warn_deprecated_sample_new_groups(sample_new_groups)
 
     var_names = _determine_plot_vars(conditional, average_by, model.data)
@@ -682,10 +668,7 @@ def comparisons(
         If any prob value is not between 0 and 1.
     TypeError
         If comparison is not a callable or valid string.
-    NotImplementedError
-        If the model uses a nonlinear formula.
     """
-    _check_model_supported(model)
     _warn_deprecated_sample_new_groups(sample_new_groups)
 
     prob = validate_prob(prob)
@@ -804,10 +787,7 @@ def plot_comparisons(
     ------
     ValueError
         If more than 3 conditional variables are provided without averaging.
-    NotImplementedError
-        If the model uses a nonlinear formula.
     """
-    _check_model_supported(model)
     _warn_deprecated_sample_new_groups(sample_new_groups)
 
     var_names = _determine_plot_vars(conditional, average_by, model.data)
@@ -908,10 +888,7 @@ def slopes(
         If any prob value is not between 0 and 1.
     TypeError
         If slope is not a callable or valid string.
-    NotImplementedError
-        If the model uses a nonlinear formula.
     """
-    _check_model_supported(model)
     _warn_deprecated_sample_new_groups(sample_new_groups)
 
     prob = validate_prob(prob)
@@ -1037,10 +1014,7 @@ def plot_slopes(
     ------
     ValueError
         If more than 3 conditional variables are provided without averaging.
-    NotImplementedError
-        If the model uses a nonlinear formula.
     """
-    _check_model_supported(model)
     _warn_deprecated_sample_new_groups(sample_new_groups)
 
     var_names = _determine_plot_vars(conditional, average_by, model.data)

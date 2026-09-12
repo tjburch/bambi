@@ -9,6 +9,7 @@ from bambi.backend.pymc.utils import INVERSE_LINKS
 from bambi.families import Family
 from bambi.nonlinear import (
     BinaryOperation,
+    FUNCTION_ALIASES,
     FunctionCall,
     Literal,
     NonlinearParameter,
@@ -25,7 +26,56 @@ _BINARY_OPERATORS = {
     "**": operator.pow,
 }
 
-_FUNCTIONS = {name: getattr(pt, name) for name in SUPPORTED_FUNCTIONS}
+_FUNCTIONS = {
+    name: getattr(pt, FUNCTION_ALIASES.get(name, name))
+    for name in SUPPORTED_FUNCTIONS
+    - {
+        "logit",
+        "normal_cdf",
+        "norm_cdf",
+        "normal_ppf",
+        "norm_ppf",
+        "probit",
+        "invprobit",
+        "cloglog",
+        "invcloglog",
+    }
+}
+
+
+def _logit(value):
+    return pt.log(value) - pt.log1p(-value)
+
+
+def _normal_cdf(value):
+    return 0.5 + 0.5 * pt.erf(value / pt.sqrt(2))
+
+
+def _normal_ppf(value):
+    return pt.sqrt(2) * pt.erfinv(2 * value - 1)
+
+
+def _cloglog(value):
+    return pt.log(-pt.log1p(-value))
+
+
+def _invcloglog(value):
+    return -pt.expm1(-pt.exp(value))
+
+
+_FUNCTIONS.update(
+    {
+        "logit": _logit,
+        "normal_cdf": _normal_cdf,
+        "norm_cdf": _normal_cdf,
+        "normal_ppf": _normal_ppf,
+        "norm_ppf": _normal_ppf,
+        "probit": _normal_ppf,
+        "invprobit": _normal_cdf,
+        "cloglog": _cloglog,
+        "invcloglog": _invcloglog,
+    }
+)
 
 
 def nonlinear_data_name(parameter_label: str, symbol: str) -> str:
@@ -150,5 +200,6 @@ def evaluate_expression(node, values):
         right = evaluate_expression(node.right, values)
         return _BINARY_OPERATORS[node.operator](left, right)
     if isinstance(node, FunctionCall):
-        return _FUNCTIONS[node.function](evaluate_expression(node.argument, values))
+        arguments = [evaluate_expression(argument, values) for argument in node.arguments]
+        return _FUNCTIONS[node.function](*arguments)
     raise TypeError(f"Unexpected nonlinear expression node: {type(node).__name__}.")

@@ -87,6 +87,40 @@ class TestNonlinearModels:
 
         assert isinstance(result, Figure)
 
+    def test_predictions_with_proportion_response(self, mock_pymc_sample):
+        size = 4
+        data = pd.DataFrame(
+            {
+                "distance": [2.0, 3.0, 4.0, 5.0],
+                "attempts": [1443, 694, 455, 353],
+                "successes": [1346, 577, 337, 208],
+                "ball_radius": np.repeat((1.68 / 2) / 12, size),
+                "hole_radius": np.repeat((4.25 / 2) / 12, size),
+            }
+        )
+        formula = bmb.Formula(
+            "prop(successes, attempts) ~ "
+            "2 * normal_cdf("
+            "asin((hole_radius - ball_radius) / distance) / sigma_angle"
+            ") - 1",
+            nlpars=("sigma_angle",),
+        )
+        model = bmb.Model(
+            formula,
+            data,
+            family="binomial",
+            link="identity",
+            priors={
+                "sigma_angle": {"Intercept": bmb.Prior("HalfNormal", sigma=0.5)},
+            },
+        )
+        idata = model.fit(draws=4, chains=2)
+
+        result = predictions(model, idata, conditional={"distance": [2.0, 5.0, 10.0]})
+
+        assert result.summary["distance"].tolist() == [2.0, 5.0, 10.0]
+        assert result.summary["estimate"].is_monotonic_decreasing
+
 
 class TestCommon:
     """

@@ -173,3 +173,98 @@ def test_nonlinear_parameter_offset_prediction(out_of_sample):
 
     assert actual.dims == ("chain", "draw", "__obs__")
     np.testing.assert_allclose(actual, expected)
+
+
+@pytest.fixture
+def golf_model():
+    data = pd.DataFrame(
+        {
+            "distance": [2.0, 3.0, 4.0, 5.0],
+            "attempts": [1443, 694, 455, 353],
+            "successes": [1346, 577, 337, 208],
+            "ball_radius": np.repeat((1.68 / 2) / 12, 4),
+            "hole_radius": np.repeat((4.25 / 2) / 12, 4),
+        }
+    )
+    formula = bmb.Formula(
+        "prop(successes, attempts) ~ "
+        "2 * normal_cdf(asin((hole_radius - ball_radius) / distance) / sigma_angle) - 1",
+        nlpars=("sigma_angle",),
+    )
+    model = bmb.Model(
+        formula,
+        data,
+        family="binomial",
+        link="identity",
+        priors={
+            "sigma_angle": {"Intercept": bmb.Prior("HalfNormal", sigma=0.5)},
+        },
+    )
+    model.build()
+    return model
+
+
+@pytest.mark.parametrize("out_of_sample", [False, True])
+def test_golf_probability_and_log_likelihood(golf_model, out_of_sample):
+    posterior = xr.Dataset({"sigma_angle_Intercept": (("chain", "draw"), [[0.02, 0.03]])})
+    idata = xr.DataTree.from_dict({"posterior": posterior})
+    data = golf_model.data
+    if out_of_sample:
+        data = pd.DataFrame(
+            {
+                "distance": [6.0, 10.0],
+                "attempts": [272, 200],
+                "successes": [149, 67],
+                "ball_radius": np.repeat((1.68 / 2) / 12, 2),
+                "hole_radius": np.repeat((4.25 / 2) / 12, 2),
+            }
+        )
+
+    result = golf_model.predict(idata, data=data if out_of_sample else None, inplace=False)
+    group = result.predictions if out_of_sample else result.posterior
+    threshold = np.arcsin((data["hole_radius"] - data["ball_radius"]) / data["distance"])
+    probability = (
+        2
+        * norm.cdf(
+            threshold.to_numpy()[None, :] / posterior["sigma_angle_Intercept"].to_numpy()[..., None]
+        )
+        - 1
+    )
+
+    np.testing.assert_allclose(group["p"], probability)
+    result = golf_model.compute_log_likelihood(
+        idata, data=data if out_of_sample else None, inplace=False
+    )
+    expected = pm.logp(
+        pm.Binomial.dist(n=data["attempts"].to_numpy(), p=group["p"].to_numpy()),
+        data["successes"].to_numpy(),
+    ).eval()
+    np.testing.assert_allclose(result.log_likelihood["successes"], expected)
+
+
+def test_nonlinear_binomial_literal_trials():
+    data = pd.DataFrame({"successes": [6, 13, 18], "x": [0.1, 0.2, 0.3]})
+    model = bmb.Model(
+        bmb.Formula("p(successes, 62) ~ normal_cdf(a + b * x)", nlpars=("a", "b")),
+        data,
+        family="binomial",
+        link="identity",
+    )
+
+    model.build()
+
+    assert "successes_data" in model.backend.model.named_vars
+    assert "p__x_data" in model.backend.model.named_vars
+
+
+def test_nonlinear_beta_binomial_proportion_builds():
+    data = pd.DataFrame({"successes": [6, 13, 18], "attempts": [59, 60, 62], "x": [0.1, 0.2, 0.3]})
+    model = bmb.Model(
+        bmb.Formula("prop(successes, attempts) ~ a + b * x", nlpars=("a", "b")),
+        data,
+        family="beta_binomial",
+    )
+
+    model.build()
+
+    assert {"successes_data", "attempts_data", "mu__x_data"} <= set(model.backend.model.named_vars)

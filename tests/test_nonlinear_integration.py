@@ -12,7 +12,7 @@ def linked_auxiliary_model():
     data = pd.DataFrame(
         {"x": [0.0, 0.5, 1.5, 2.0], "z": [-1.0, 0.0, 0.5, 1.0], "y": [0.2, 0.4, 0.7, 0.6]}
     )
-    formula = bmb.Formula("y ~ a + b * exp(-x)", "a ~ 1", "b ~ 1", "kappa ~ 1 + z", nonlinear=True)
+    formula = bmb.Formula("y ~ a + b * exp(-x)", "kappa ~ 1 + z", nlpars=("a", "b"))
     model = bmb.Model(
         formula,
         data,
@@ -123,7 +123,7 @@ def test_linked_auxiliary_aliases_with_groups(monkeypatch, sparse):
             "g": ["a", "a", "b", "b"],
         }
     )
-    formula = bmb.Formula("y ~ a * exp(-x)", "a ~ 1 + (1 | g)", "kappa ~ 1 + z", nonlinear=True)
+    formula = bmb.Formula("y ~ a * exp(-x)", "a ~ 1 + (1 | g)", "kappa ~ 1 + z", nlpars=("a",))
     model = bmb.Model(formula, data, family="beta")
     model.set_alias(
         {

@@ -224,7 +224,7 @@ def prepare_nonlinear_data(
     ValueError
         If parameters depend on one another or required data are incomplete.
     """
-    names = set(formula.additionals_lhs)
+    names = set(formula.nlpars)
     variables = set(expression.symbols - names)
     if include_response:
         response_formula, _ = split_nonlinear_formula(formula.main)

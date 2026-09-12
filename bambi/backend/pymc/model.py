@@ -120,7 +120,7 @@ class PyMCModel:
                 parameter_info, self.spec.family, self._group_specific_state, model
             )
 
-        if self.spec.formula.nonlinear:
+        if self.spec.formula.nlpars:
             predictor_values = {}
             for name, parameter in self.spec.nonlinear_predictors.items():
                 parameter_info = make_conditional_parameter_info(parameter)
@@ -618,7 +618,7 @@ class PyMCModel:
             )
 
     def _build_new_data(self, data: pd.DataFrame, purpose: str, kind: str | None = None):
-        if self.spec.formula.nonlinear:
+        if self.spec.formula.nlpars:
             parent = self.spec.parameters[self.spec.family.likelihood.parent]
             data = prepare_nonlinear_data(
                 self.spec.formula,
@@ -646,7 +646,7 @@ class PyMCModel:
             new_data.update(parameter_data)
             factor_plans.extend(parameter_factor_plans)
 
-        if self.spec.formula.nonlinear:
+        if self.spec.formula.nlpars:
             parent = self.spec.parameters[self.spec.family.likelihood.parent]
             new_data.update(build_new_nonlinear_data(parent, data))
 

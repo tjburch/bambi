@@ -171,7 +171,7 @@ def scale_priors(model):
     # Scale marginal parameters
     _scale_marginal_parameters(model, response_std)
 
-    if model.formula.nonlinear:
+    if model.formula.nlpars:
         return
 
     main_parameter = model.parameters[model.family.likelihood.parent]

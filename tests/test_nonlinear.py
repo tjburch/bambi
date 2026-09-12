@@ -23,9 +23,7 @@ def exponential_formula(group_specific=False):
     return bmb.Formula(
         "y ~ a + b * exp(-k * x)",
         a_formula,
-        "b ~ 1",
-        "k ~ 1",
-        nonlinear=True,
+        nlpars=("a", "b", "k"),
     )
 
 
@@ -46,7 +44,7 @@ def exponential_priors(group_specific=False):
 def test_constant_parameters_match_linear_regression():
     data = linear_data()
     nonlinear = bmb.Model(
-        bmb.Formula("y ~ a + b * x", "a ~ 1", "b ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a + b * x", nlpars=("a", "b")),
         data,
         priors={
             "a": {"Intercept": normal_prior()},
@@ -90,13 +88,37 @@ def test_constant_parameters_match_linear_regression():
     xr.testing.assert_allclose(nonlinear_mu, linear_mu)
 
 
+def test_omitted_constant_formulas_match_explicit_intercepts():
+    data = linear_data()
+    formulas = [
+        bmb.Formula("y ~ a + b * x", nlpars=("a", "b")),
+        bmb.Formula("y ~ a + b * x", "a ~ 1", "b ~ 1", nlpars=("a", "b")),
+    ]
+    draws = xr.Dataset(
+        {
+            "a_Intercept": (("chain", "draw"), [[1.25]]),
+            "b_Intercept": (("chain", "draw"), [[-0.75]]),
+            "sigma": (("chain", "draw"), [[1.0]]),
+        }
+    )
+    predictions = []
+
+    for formula in formulas:
+        model = bmb.Model(formula, data, center_predictors=False)
+        model.build()
+        with model.backend.model:
+            predictions.append(
+                pm.compute_deterministics(draws, var_names=["mu"], progressbar=False)["mu"]
+            )
+
+    xr.testing.assert_allclose(predictions[0], predictions[1])
+
+
 def test_supported_expression_operations():
     data = pd.DataFrame({"x": [1.0, 2.0], "y": [0.0, 0.0]})
     formula = bmb.Formula(
         "y ~ sqrt(a ** 2) + log(b) / x",
-        "a ~ 1",
-        "b ~ 1",
-        nonlinear=True,
+        nlpars=("a", "b"),
     )
     model = bmb.Model(
         formula,
@@ -128,6 +150,9 @@ def test_predictor_dependent_parameter_builds_expected_graph():
 
     assert_ip_dlogp(model)
     assert set(model.nonlinear_predictors) == {"a", "b", "k"}
+    assert set(model.nonlinear_predictors["a"].terms) == {"Intercept", "z"}
+    assert set(model.nonlinear_predictors["b"].terms) == {"Intercept"}
+    assert set(model.nonlinear_predictors["k"].terms) == {"Intercept"}
     assert model.backend.model.named_vars_to_dims["mu"] == ("__obs__",)
     assert model.backend.model.named_vars_to_dims["a"] == ("__obs__",)
     assert model.backend.model.named_vars_to_dims["mu__x_data"] == ("__obs__",)
@@ -229,23 +254,23 @@ def test_group_specific_parameter_predicts_new_data(monkeypatch, sparse_dot):
     "formula, error",
     [
         (
-            bmb.Formula("y ~ a + b * x", "b ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a + b * x", nlpars=("b",)),
             "No nonlinear parameter formula or data column",
         ),
         (
-            bmb.Formula("y ~ a + x", "a ~ 1", "b ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a + x", nlpars=("a", "b")),
             "not used by the expression",
         ),
         (
-            bmb.Formula("y ~ a + unknown", "a ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a + unknown", nlpars=("a",)),
             "No nonlinear parameter formula or data column",
         ),
         (
-            bmb.Formula("y ~ a + sin(x)", "a ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a + sin(x)", nlpars=("a",)),
             "Unsupported nonlinear function 'sin'",
         ),
         (
-            bmb.Formula("y ~ a + b * x", "a ~ 1 + b", "b ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a + b * x", "a ~ 1 + b", nlpars=("a", "b")),
             "cannot depend on one another",
         ),
     ],
@@ -257,19 +282,19 @@ def test_validation_errors(formula, error):
 
 @pytest.mark.parametrize(
     "additionals",
-    [("a ~ 1 + b", "b ~ 1"), ("a ~ 1", "b ~ 1", "sigma ~ 1 + b")],
+    [("a ~ 1 + b",), ("a ~ 1", "sigma ~ 1 + b")],
 )
 def test_data_name_collision_is_reported_before_parameter_dependency(additionals):
     data = linear_data()
     data["b"] = 1.0
-    formula = bmb.Formula("y ~ a + b * x", *additionals, nonlinear=True)
+    formula = bmb.Formula("y ~ a + b * x", *additionals, nlpars=("a", "b"))
 
     with pytest.raises(ValueError, match=r"must not also be data columns: \['b'\]"):
         bmb.Model(formula, data)
 
 
 def test_malformed_expression():
-    formula = bmb.Formula("y ~ a +", "a ~ 1", nonlinear=True)
+    formula = bmb.Formula("y ~ a +", nlpars=("a",))
     with pytest.raises(ValueError, match="Malformed nonlinear expression"):
         bmb.Model(formula, linear_data())
 
@@ -277,7 +302,7 @@ def test_malformed_expression():
 def test_nonnumeric_expression_data():
     data = linear_data()
     data["label"] = "a"
-    formula = bmb.Formula("y ~ a + label", "a ~ 1", nonlinear=True)
+    formula = bmb.Formula("y ~ a + label", nlpars=("a",))
 
     with pytest.raises(ValueError, match="Nonlinear expression data must be numeric"):
         bmb.Model(formula, data)
@@ -312,7 +337,7 @@ def test_nonlinear_coefficient_alias():
 
 
 def test_vector_parent_is_rejected():
-    formula = bmb.Formula("y ~ rate * x", "rate ~ 1", nonlinear=True)
+    formula = bmb.Formula("y ~ rate * x", nlpars=("rate",))
 
     with pytest.raises(ValueError, match="scalar parent parameter"):
         bmb.Model(formula, linear_data(), family="categorical")
@@ -326,7 +351,7 @@ def test_dropna_aligns_all_model_inputs():
     for row, column in enumerate(["y", "x", "z", "group"]):
         data.iloc[row, data.columns.get_loc(column)] = np.nan
     original = data.copy(deep=True)
-    formula = bmb.Formula("y ~ a + b * x", "a ~ 1 + z", "b ~ 1 + (1 | group)", nonlinear=True)
+    formula = bmb.Formula("y ~ a + b * x", "a ~ 1 + z", "b ~ 1 + (1 | group)", nlpars=("a", "b"))
     model = bmb.Model(formula, data, dropna=True)
     model.build()
 
@@ -358,7 +383,7 @@ def test_dropna_rejects_no_complete_observations():
 def test_dependency_check_ignores_string_literals():
     data = linear_data(4)
     data["category"] = ["a", "b", "a", "b"]
-    formula = bmb.Formula("y ~ a * x", "a ~ C(category, Treatment(reference='a'))", nonlinear=True)
+    formula = bmb.Formula("y ~ a * x", "a ~ C(category, Treatment(reference='a'))", nlpars=("a",))
     model = bmb.Model(formula, data)
     model.build()
     assert_ip_dlogp(model)
@@ -366,7 +391,7 @@ def test_dependency_check_ignores_string_literals():
 
 @pytest.mark.parametrize("rhs", ["b", "I(b ** 2)", "(1 | b)"])
 def test_dependency_check_uses_formula_variables(rhs):
-    formula = bmb.Formula("y ~ a + b * x", f"a ~ {rhs}", "b ~ 1", nonlinear=True)
+    formula = bmb.Formula("y ~ a + b * x", f"a ~ {rhs}", nlpars=("a", "b"))
     with pytest.raises(ValueError, match="cannot depend on one another"):
         bmb.Model(formula, linear_data())
 
@@ -401,13 +426,13 @@ def test_prediction_rejects_incomplete_inputs(column):
     ],
 )
 def test_unsupported_expression_syntax_is_rejected(expression):
-    formula = bmb.Formula(f"y ~ {expression}", "a ~ 1", nonlinear=True)
+    formula = bmb.Formula(f"y ~ {expression}", nlpars=("a",))
     with pytest.raises(ValueError, match="Nonlinear|nonlinear|Unsupported"):
         bmb.Model(formula, linear_data())
 
 
 @pytest.mark.parametrize("name", ["mu", "sigma", "exp", "x"])
 def test_reserved_parameter_names_are_rejected(name):
-    formula = bmb.Formula(f"y ~ {name}", f"{name} ~ 1", nonlinear=True)
+    formula = bmb.Formula(f"y ~ {name}", nlpars=(name,))
     with pytest.raises(ValueError, match="names must not"):
         bmb.Model(formula, linear_data())

@@ -36,7 +36,7 @@ from bambi.utils import as_dataset
 
 
 def _check_model_supported(model: Model) -> None:
-    if model.formula.nonlinear:
+    if model.formula.nlpars:
         raise NotImplementedError(
             "The interpret API does not support nonlinear models yet. "
             "Use Model.predict() with explicit prediction data instead."

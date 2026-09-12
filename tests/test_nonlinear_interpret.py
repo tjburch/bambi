@@ -19,7 +19,7 @@ from bambi import interpret
 )
 def test_interpret_rejects_nonlinear_models(function, kwargs):
     model = bmb.Model(
-        bmb.Formula("y ~ a * x", "a ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a * x", nlpars=("a",)),
         pd.DataFrame({"x": [1.0, 2.0, 3.0], "y": [2.0, 4.0, 6.0]}),
         priors={"a": {"Intercept": bmb.Prior("Normal", mu=0, sigma=1)}},
     )

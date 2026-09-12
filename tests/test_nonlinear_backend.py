@@ -13,7 +13,7 @@ def exponential_model():
     data = pd.DataFrame(
         {"x": [0.0, 0.5, 1.5, 3.0], "z": [-1.0, 0.0, 0.5, 2.0], "y": [2.0, 1.5, 1.0, 0.8]}
     )
-    formula = bmb.Formula("y ~ a + b * exp(-k * x)", "a ~ 1 + z", "b ~ 1", "k ~ 1", nonlinear=True)
+    formula = bmb.Formula("y ~ a + b * exp(-k * x)", "a ~ 1 + z", nlpars=("a", "b", "k"))
     model = bmb.Model(
         formula,
         data,
@@ -90,7 +90,7 @@ def test_exponential_log_likelihood_matches_normal(exponential_model, out_of_sam
 
 def test_zero_predictor_broadcasts_for_new_observations():
     data = pd.DataFrame({"x": [0.0, 1.0, 2.0], "y": [0.1, 1.2, 2.1]})
-    model = bmb.Model(bmb.Formula("y ~ a + x", "a ~ 0", nonlinear=True), data)
+    model = bmb.Model(bmb.Formula("y ~ a + x", "a ~ 0", nlpars=("a",)), data)
     model.build()
     idata = xr.DataTree.from_dict(
         {"posterior": xr.Dataset({"sigma": (("chain", "draw"), [[0.2]])})}
@@ -111,7 +111,7 @@ def test_multiple_nonlinear_summands_share_parameter(out_of_sample):
         "a ~ 1",
         "b ~ 1",
         "k ~ 1",
-        nonlinear=True,
+        nlpars=("a", "b", "k"),
     )
     model = bmb.Model(formula, data)
     model.build()
@@ -147,7 +147,7 @@ def test_nonlinear_parameter_offset_prediction(out_of_sample):
             "y": [0.1, 1.5, 3.0, 5.8],
         }
     )
-    formula = bmb.Formula("y ~ exp(a) * x", "a ~ 1 + z + offset(exposure)", nonlinear=True)
+    formula = bmb.Formula("y ~ exp(a) * x", "a ~ 1 + z + offset(exposure)", nlpars=("a",))
     model = bmb.Model(formula, data, center_predictors=False)
     model.build()
     posterior = xr.Dataset(

@@ -34,7 +34,7 @@ def test_parent_link_matches_pymc_and_prediction(
 ):
     data = pd.DataFrame({"y": [0, 1, 0, 1], "x": [-1.0, -0.3, 0.2, 0.7]})
     model = bmb.Model(
-        bmb.Formula("y ~ a + b * x ** 2", "a ~ 1", "b ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a + b * x ** 2", nlpars=("a", "b")),
         data,
         family=family,
         link={parent: link},
@@ -70,7 +70,7 @@ def test_parent_link_matches_pymc_and_prediction(
 def test_link_preserves_likelihood_parameter_transform():
     data = pd.DataFrame({"y": [0.2, 0.7], "x": [-0.5, 0.5]})
     model = bmb.Model(
-        bmb.Formula("y ~ a * x", "a ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a * x", nlpars=("a",)),
         data,
         family="beta",
         priors={"kappa": 4.0},
@@ -87,9 +87,7 @@ def test_link_preserves_likelihood_parameter_transform():
 
 def test_scalar_predictor_transform_receives_auxiliary_parameters(monkeypatch):
     data = pd.DataFrame({"y": [0.0, 1.0], "x": [-0.5, 0.5]})
-    model = bmb.Model(
-        bmb.Formula("y ~ a * x", "a ~ 1", nonlinear=True), data, priors={"sigma": 2.0}
-    )
+    model = bmb.Model(bmb.Formula("y ~ a * x", nlpars=("a",)), data, priors={"sigma": 2.0})
     monkeypatch.setitem(
         transforms_registry.additive_predictors,
         (type(model.family), "mu"),
@@ -106,7 +104,7 @@ def test_scalar_transform_result_broadcasts_for_prediction(monkeypatch, transfor
     data = pd.DataFrame({"y": [0.0, 1.0], "x": [-0.5, 0.5]})
     link = {"mu": bmb.Link("constant", inverse_link=lambda value: 1.0)}
     model = bmb.Model(
-        bmb.Formula("y ~ a * x", "a ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a * x", nlpars=("a",)),
         data,
         priors={"sigma": 1.0},
         link=link if transform == "inverse_link" else None,
@@ -131,7 +129,7 @@ def test_scalar_transform_result_broadcasts_for_prediction(monkeypatch, transfor
 def test_vector_parent_links_remain_rejected(family):
     with pytest.raises(ValueError, match="scalar parent parameter"):
         bmb.Model(
-            bmb.Formula("y ~ a * x", "a ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a * x", nlpars=("a",)),
             pd.DataFrame({"y": [0, 1, 2], "x": [0, 1, 2]}),
             family=family,
         )
@@ -141,7 +139,7 @@ def test_vector_parent_links_remain_rejected(family):
 @pytest.mark.parametrize("predictor", ["a ~ 0", "a ~ 1"])
 def test_intercept_only_prediction_accepts_row_only_data(family, inverse_link, predictor):
     model = bmb.Model(
-        bmb.Formula("y ~ a + b", predictor, "b ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a + b", predictor, nlpars=("a", "b")),
         pd.DataFrame({"y": [0, 1]}),
         family=family,
         priors={"sigma": 1.0} if family == "gaussian" else None,
@@ -163,7 +161,7 @@ def test_intercept_only_prediction_accepts_row_only_data(family, inverse_link, p
 def test_invalid_family_link_remains_rejected():
     with pytest.raises(ValueError, match="cannot be used"):
         bmb.Model(
-            bmb.Formula("y ~ a", "a ~ 1", nonlinear=True),
+            bmb.Formula("y ~ a", nlpars=("a",)),
             pd.DataFrame({"y": [0, 1]}),
             family="poisson",
             link="logit",
@@ -172,7 +170,7 @@ def test_invalid_family_link_remains_rejected():
 
 def test_bare_predictor_preserves_parent_name_in_new_data():
     model = bmb.Model(
-        bmb.Formula("y ~ a", "a ~ 1", nonlinear=True),
+        bmb.Formula("y ~ a", nlpars=("a",)),
         pd.DataFrame({"y": [0, 1]}),
         priors={"sigma": 1.0},
     )

@@ -11,11 +11,13 @@ def make_model(groups=False, auxiliary=True, bare=False, noncentered=True):
     x = np.linspace(-1, 1, 12)
     data = pd.DataFrame({"y": 1 + x, "x": x, "z": x**2, "g": np.repeat(["u", "v", "w"], 4)})
     suffix = " + (1 | g)" if groups else ""
-    formulas = ["y ~ a" if bare else "y ~ a * x", "a ~ 1" + suffix]
+    formulas = ["y ~ a" if bare else "y ~ a * x"]
+    if groups:
+        formulas.append("a ~ 1" + suffix)
     if auxiliary:
         formulas.append("sigma ~ z" + suffix)
     return bmb.Model(
-        bmb.Formula(*formulas, nonlinear=True),
+        bmb.Formula(*formulas, nlpars=("a",)),
         data,
         center_predictors=False,
         noncentered=noncentered,

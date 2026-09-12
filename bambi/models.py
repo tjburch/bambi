@@ -58,7 +58,7 @@ class Model:
     ----------
     formula : str or Formula
         A model description written using the formula syntax from the `formulae` library.
-        Nonlinear models require a `Formula` created with `nonlinear=True`.
+        Nonlinear models require a `Formula` with nonlinear parameter names passed to `nlpars`.
     data : pd.DataFrame
         A pandas dataframe containing the data on which the model will be fit, with column
         names matching variables defined in the formula.
@@ -190,7 +190,7 @@ class Model:
         self._convert_deprecated_c_response()
 
         ## Main parameter
-        if self.formula.nonlinear:
+        if self.formula.nlpars:
             if self.family.RESPONSE_NDIM != 0:
                 raise ValueError("Nonlinear formulas currently require a univariate response.")
             if self.family.get_param_spec(self.family.likelihood.parent).ndim != 0:
@@ -198,6 +198,12 @@ class Model:
 
             response_formula, nonlinear_source = split_nonlinear_formula(self.formula.main)
             nonlinear_expression = NonlinearExpression.parse(nonlinear_source)
+            reserved_nlpars = set(self.formula.nlpars) & set(self.family.likelihood.params)
+            if reserved_nlpars:
+                raise ValueError(
+                    "Nonlinear parameter names must not be likelihood parameter names: "
+                    f"{sorted(reserved_nlpars)}."
+                )
             reserved_symbols = (
                 nonlinear_expression.symbols
                 & set(self.formula.additionals_lhs)
@@ -208,9 +214,7 @@ class Model:
                     "Nonlinear expression names must not be likelihood parameter names: "
                     f"{sorted(reserved_symbols)}."
                 )
-            nonlinear_names = set(self.formula.additionals_lhs) - set(
-                self.family.auxiliary_parameters
-            )
+            nonlinear_names = set(self.formula.nlpars)
             collisions = nonlinear_names & set(self.data.columns)
             if collisions:
                 raise ValueError(
@@ -254,14 +258,14 @@ class Model:
         # Merge bare term priors with nested parent priors; nested entries take precedence.
         parent_name = self.family.likelihood.parent
         parent_priors = {}
-        if not self.formula.nonlinear:
+        if not self.formula.nlpars:
             parent_priors = {name: prior for name, prior in priors.items() if name != parent_name}
             if parent_name in priors:
                 parent_priors.update(priors[parent_name])
 
         # Add response
         self.response_term = ResponseTerm(design.response)
-        if self.formula.nonlinear and self.response_term.data.ndim != 1:
+        if self.formula.nlpars and self.response_term.data.ndim != 1:
             raise ValueError("Nonlinear formulas currently require one observed response.")
         self._response_component = _ResponseComponentAdapter(
             self.response_term, design.response, self
@@ -276,7 +280,7 @@ class Model:
             }
 
         # Add parent parameter
-        if self.formula.nonlinear:
+        if self.formula.nlpars:
             self._nonlinear_predictors = self._make_nonlinear_predictors(
                 nonlinear_expression,
                 priors,
@@ -303,7 +307,7 @@ class Model:
         ### Conditional
         additional_formulas = zip(self.formula.additionals_lhs, self.formula.additionals)
         for name, extra_formula in additional_formulas:
-            if self.formula.nonlinear and name in self.nonlinear_predictors:
+            if self.formula.nlpars and name in self.nonlinear_predictors:
                 continue
             # Check 'name' is part of parameter values
             if name not in auxiliary_parameters:
@@ -356,21 +360,11 @@ class Model:
         self._build_priors()
 
     def _make_nonlinear_predictors(self, expression, priors, na_action, additional_namespace):
+        explicit_formulas = dict(zip(self.formula.additionals_lhs, self.formula.additionals))
         formulas = {
-            name: formula
-            for name, formula in zip(self.formula.additionals_lhs, self.formula.additionals)
-            if name not in self.family.auxiliary_parameters
+            name: explicit_formulas.get(name, f"{name} ~ 1") for name in self.formula.nlpars
         }
-        names = tuple(formulas)
-        if not names:
-            raise ValueError("Nonlinear formulas require at least one parameter formula.")
-
-        reserved = set(names) & set(self.family.likelihood.params)
-        if reserved:
-            raise ValueError(
-                "Nonlinear parameter names must not be likelihood parameter names: "
-                f"{sorted(reserved)}."
-            )
+        names = self.formula.nlpars
 
         function_names = set(names) & SUPPORTED_FUNCTIONS
         if function_names:
@@ -382,7 +376,7 @@ class Model:
         unused = set(names) - expression.symbols
         if unused:
             raise ValueError(
-                f"Nonlinear parameter formula(s) not used by the expression: {sorted(unused)}."
+                f"Nonlinear parameter name(s) not used by the expression: {sorted(unused)}."
             )
 
         predictors = {}
@@ -619,7 +613,7 @@ class Model:
         if behavior == "ignore":
             return
 
-        if self.formula.nonlinear:
+        if self.formula.nlpars:
             valid = set(self.marginal_parameters) | set(self.additive_parameters)
             unused = []
             for name, value in priors.items():
@@ -675,7 +669,7 @@ class Model:
         # Arguments `common` and `group_specific` only affect the parent parameter.
         parent_name = self.family.likelihood.parent
 
-        if self.formula.nonlinear:
+        if self.formula.nlpars:
             if common is not None or group_specific is not None:
                 raise ValueError(
                     "Use nested priors for nonlinear parameters instead of 'common' or "
@@ -783,7 +777,9 @@ class Model:
 
         lhs, separator, rhs = self.formula.main.partition("~")
         lhs = lhs.replace("c", "counts", 1)
-        self.formula = Formula(lhs + separator + rhs, *self.formula.additionals)
+        self.formula = Formula(
+            lhs + separator + rhs, *self.formula.additionals, nlpars=self.formula.nlpars
+        )
         warnings.warn(
             f"Using 'c(...)' as the response for the '{self.family.name}' family is deprecated. "
             "Use 'counts(...)' instead.",
@@ -825,7 +821,7 @@ class Model:
         #     * There's unavoidable redundancy in the response name
         #       "sigma": {"sigma": "alias"}}
         # pylint: disable=too-many-nested-blocks
-        if len(self.conditional_parameters) == 1 and not self.formula.nonlinear:
+        if len(self.conditional_parameters) == 1 and not self.formula.nlpars:
             parent_parameter = self.parameters[self.family.likelihood.parent]
             for name, alias in aliases.items():
                 assert isinstance(alias, str)
@@ -1425,7 +1421,7 @@ class Model:
             output_list.append(key.rjust(width) + spacer.join(listify(value)))
 
         # Build priors section. Make sure the parent parameter goes first.
-        if self.formula.nonlinear:
+        if self.formula.nlpars:
             priors_dict = {
                 parameter.label: make_priors_summary(parameter)
                 for parameter in self.additive_parameters.values()
@@ -1443,7 +1439,7 @@ class Model:
                 [prior_repr(parameter) for parameter in self.marginal_parameters.values()]
             )
             aux_str = "Auxiliary parameters\n" + wrapify(indentify(aux_str, 4), 100, 4)
-            if self.formula.nonlinear:
+            if self.formula.nlpars:
                 priors_dict[parent_parameter.label] = aux_str
             else:
                 priors_dict[parent_name] = priors_dict[parent_name] + "\n\n" + aux_str
@@ -1542,7 +1538,7 @@ class Model:
 
         Examples
         --------
-        For ``Formula("y ~ a * x", "a ~ 1", nonlinear=True)``, retrieve the predictor
+        For ``Formula("y ~ a * x", nlpars=("a",))``, retrieve the predictor
         with ``model.nonlinear_predictors["a"]``.
         """
         return self._nonlinear_predictors.copy()

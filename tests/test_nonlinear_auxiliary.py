@@ -14,7 +14,10 @@ def make_data():
 
 def make_formula(groups=False):
     suffix = " + (1 | group)" if groups else ""
-    return bmb.Formula("y ~ a * x", "a ~ 1" + suffix, "sigma ~ z" + suffix, nonlinear=True)
+    additionals = ["sigma ~ z" + suffix]
+    if groups:
+        additionals.insert(0, "a ~ 1" + suffix)
+    return bmb.Formula("y ~ a * x", *additionals, nlpars=("a",))
 
 
 def test_auxiliary_graph_matches_direct_pymc():
@@ -107,12 +110,12 @@ def test_auxiliary_missing_rows_share_one_mask():
 )
 def test_auxiliary_dependencies_rejected(main, additionals):
     with pytest.raises(ValueError, match="names must not|cannot depend"):
-        bmb.Model(bmb.Formula(main, *additionals, nonlinear=True), make_data())
+        bmb.Model(bmb.Formula(main, *additionals, nlpars=("a",)), make_data())
 
 
 def test_duplicate_auxiliary_formula_rejected():
     with pytest.raises(ValueError, match="Duplicate"):
-        bmb.Formula("y ~ a * x", "a ~ 1", "sigma ~ z", "sigma ~ 1", nonlinear=True)
+        bmb.Formula("y ~ a * x", "sigma ~ z", "sigma ~ 1", nlpars=("a",))
 
 
 @pytest.mark.usefixtures("mock_pymc_sample")
@@ -126,7 +129,7 @@ def test_undeclared_likelihood_names_can_reference_data(auxiliary):
         expression = "a * z"
     else:
         expression = "a * sigma"
-    formula = bmb.Formula(f"y ~ {expression}", *additionals, nonlinear=True)
+    formula = bmb.Formula(f"y ~ {expression}", *additionals, nlpars=("a",))
     model = bmb.Model(formula, data, center_predictors=False)
     idata = model.fit(draws=3, chains=1)
     predicted = model.predict(idata, data=data.iloc[:2], inplace=False)

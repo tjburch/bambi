@@ -28,7 +28,19 @@ FUNCTION_ARITIES = {
     "arctanh": 1,
     "atan2": 2,
     "arctan2": 2,
+    "log1p": 1,
+    "expm1": 1,
+    "erf": 1,
+    "erfc": 1,
+    "logit": 1,
+    "invlogit": 1,
+    "expit": 1,
     "normal_cdf": 1,
+    "norm_cdf": 1,
+    "normal_ppf": 1,
+    "norm_ppf": 1,
+    "cloglog": 1,
+    "invcloglog": 1,
 }
 
 FUNCTION_ALIASES = {
@@ -39,6 +51,8 @@ FUNCTION_ALIASES = {
     "acosh": "arccosh",
     "atanh": "arctanh",
     "atan2": "arctan2",
+    "invlogit": "sigmoid",
+    "expit": "sigmoid",
 }
 
 SUPPORTED_FUNCTIONS = frozenset(FUNCTION_ARITIES)

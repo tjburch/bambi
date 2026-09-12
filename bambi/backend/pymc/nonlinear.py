@@ -28,15 +28,42 @@ _BINARY_OPERATORS = {
 
 _FUNCTIONS = {
     name: getattr(pt, FUNCTION_ALIASES.get(name, name))
-    for name in SUPPORTED_FUNCTIONS - {"normal_cdf"}
+    for name in SUPPORTED_FUNCTIONS
+    - {"logit", "normal_cdf", "norm_cdf", "normal_ppf", "norm_ppf", "cloglog", "invcloglog"}
 }
+
+
+def _logit(value):
+    return pt.log(value) - pt.log1p(-value)
 
 
 def _normal_cdf(value):
     return 0.5 + 0.5 * pt.erf(value / pt.sqrt(2))
 
 
-_FUNCTIONS["normal_cdf"] = _normal_cdf
+def _normal_ppf(value):
+    return pt.sqrt(2) * pt.erfinv(2 * value - 1)
+
+
+def _cloglog(value):
+    return pt.log(-pt.log1p(-value))
+
+
+def _invcloglog(value):
+    return -pt.expm1(-pt.exp(value))
+
+
+_FUNCTIONS.update(
+    {
+        "logit": _logit,
+        "normal_cdf": _normal_cdf,
+        "norm_cdf": _normal_cdf,
+        "normal_ppf": _normal_ppf,
+        "norm_ppf": _normal_ppf,
+        "cloglog": _cloglog,
+        "invcloglog": _invcloglog,
+    }
+)
 
 
 def nonlinear_data_name(parameter_label: str, symbol: str) -> str:

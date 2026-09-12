@@ -73,14 +73,15 @@ Expressions support the arithmetic operations `+`, `-`, `*`, `/`, and `**`, toge
 
 | Family | Functions |
 |---|---|
-| Basic | `exp`, `log`, `sqrt` |
+| Basic | `exp`, `log`, `sqrt`, `log1p`, `expm1` |
 | Trigonometric | `sin`, `cos`, `tan` |
 | Inverse trigonometric | `asin`, `acos`, `atan`, `atan2` |
 | Hyperbolic | `sinh`, `cosh`, `tanh` |
 | Inverse hyperbolic | `asinh`, `acosh`, `atanh` |
-| Probability | `normal_cdf` |
+| Error functions | `erf`, `erfc` |
+| Probability transforms | `logit`, `invlogit`, `normal_cdf`, `normal_ppf`, `cloglog`, `invcloglog` |
 
-The `arc` spellings `arcsin`, `arccos`, `arctan`, `arctan2`, `arcsinh`, `arccosh`, and `arctanh` are aliases for their shorter counterparts. Angles are measured in radians. Inputs must satisfy the mathematical domain of the function; for example, the input to `asin` must be between -1 and 1. Explicit, scientifically meaningful priors are strongly recommended because nonlinear models can be weakly identified.
+The `arc` spellings `arcsin`, `arccos`, `arctan`, `arctan2`, `arcsinh`, `arccosh`, and `arctanh` are aliases for their shorter counterparts. `expit` is an alias for `invlogit`; `norm_cdf` and `norm_ppf` are aliases for the corresponding `normal_` names. Angles are measured in radians. Inputs must satisfy the mathematical domain of the function; for example, the input to `asin` must be between -1 and 1. Explicit, scientifically meaningful priors are strongly recommended because nonlinear models can be weakly identified.
 
 Nonlinear predictor coefficients do not receive response-based automatic prior scaling, even when `auto_scale=True`, further reason to set priors on the scale of each scientific parameter. Automatic scaling still applies to marginal likelihood parameters such as Gaussian `sigma`.
 

@@ -29,7 +29,17 @@ _BINARY_OPERATORS = {
 _FUNCTIONS = {
     name: getattr(pt, FUNCTION_ALIASES.get(name, name))
     for name in SUPPORTED_FUNCTIONS
-    - {"logit", "normal_cdf", "norm_cdf", "normal_ppf", "norm_ppf", "cloglog", "invcloglog"}
+    - {
+        "logit",
+        "normal_cdf",
+        "norm_cdf",
+        "normal_ppf",
+        "norm_ppf",
+        "probit",
+        "invprobit",
+        "cloglog",
+        "invcloglog",
+    }
 }
 
 
@@ -60,6 +70,8 @@ _FUNCTIONS.update(
         "norm_cdf": _normal_cdf,
         "normal_ppf": _normal_ppf,
         "norm_ppf": _normal_ppf,
+        "probit": _normal_ppf,
+        "invprobit": _normal_cdf,
         "cloglog": _cloglog,
         "invcloglog": _invcloglog,
     }

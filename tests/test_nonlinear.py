@@ -173,9 +173,10 @@ def test_supported_trigonometric_functions():
         for function in unary_functions
     )
     expression += " + atan2(x, z) + arctan2(x, z)"
-    expression += " + log1p(x) + expm1(x) + erf(x) + erfc(x)"
+    expression += " + log1p(x) + expm1(x) + softplus(x) + erf(x) + erfc(x)"
     expression += " + logit(x) + invlogit(x) + expit(x)"
     expression += " + normal_cdf(x) + norm_cdf(x) + normal_ppf(x) + norm_ppf(x)"
+    expression += " + probit(x) + invprobit(x)"
     expression += " + cloglog(x) + invcloglog(x) + a"
     model = bmb.Model(
         bmb.Formula(f"y ~ {expression}", nlpars=("a",)),
@@ -209,12 +210,15 @@ def test_supported_trigonometric_functions():
         + 2 * np.arctan2(x, z)
         + np.log1p(x)
         + np.expm1(x)
+        + np.logaddexp(0, x)
         + erf(x)
         + erfc(x)
         + logit(x)
         + 2 * expit(x)
         + 2 * ndtr(x)
         + 2 * ndtri(x)
+        + ndtri(x)
+        + ndtr(x)
         + np.log(-np.log1p(-x))
         - np.expm1(-np.exp(x))
         + 0.3

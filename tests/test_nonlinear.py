@@ -3,6 +3,7 @@ import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
+from scipy.special import ndtr
 
 import bambi as bmb
 
@@ -143,6 +144,87 @@ def test_supported_expression_operations():
     np.testing.assert_allclose(result, [[[5.0, 4.0]]])
 
 
+def test_supported_trigonometric_functions():
+    x = np.array([0.2, 0.5])
+    z = np.array([1.2, 1.5])
+    data = pd.DataFrame({"x": x, "z": z, "y": np.zeros(2)})
+    unary_functions = (
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "atan",
+        "arcsin",
+        "arccos",
+        "arctan",
+        "sinh",
+        "cosh",
+        "tanh",
+        "asinh",
+        "acosh",
+        "atanh",
+        "arcsinh",
+        "arccosh",
+        "arctanh",
+    )
+    expression = " + ".join(
+        f"{function}({'z' if function in ('acosh', 'arccosh') else 'x'})"
+        for function in unary_functions
+    )
+    expression += " + atan2(x, z) + arctan2(x, z) + normal_cdf(x) + a"
+    model = bmb.Model(
+        bmb.Formula(f"y ~ {expression}", nlpars=("a",)),
+        data,
+        priors={"a": {"Intercept": normal_prior()}},
+    )
+    model.build()
+    draws = xr.Dataset(
+        {
+            "a_Intercept": (("chain", "draw"), [[0.3]]),
+            "sigma": (("chain", "draw"), [[1.0]]),
+        }
+    )
+
+    with model.backend.model:
+        result = pm.compute_deterministics(draws, var_names=["mu"], progressbar=False)["mu"]
+
+    expected = (
+        np.sin(x)
+        + np.cos(x)
+        + np.tan(x)
+        + 2 * np.arcsin(x)
+        + 2 * np.arccos(x)
+        + 2 * np.arctan(x)
+        + np.sinh(x)
+        + np.cosh(x)
+        + np.tanh(x)
+        + 2 * np.arcsinh(x)
+        + 2 * np.arccosh(z)
+        + 2 * np.arctanh(x)
+        + 2 * np.arctan2(x, z)
+        + ndtr(x)
+        + 0.3
+    )
+    np.testing.assert_allclose(result, expected[None, None, :])
+
+
+@pytest.mark.parametrize(
+    "expression, message",
+    [
+        ("atan2(x)", "requires exactly 2 positional arguments"),
+        ("atan2(x, x, x)", "requires exactly 2 positional arguments"),
+        ("atan2(x=x, y=x)", "requires exactly 2 positional arguments"),
+        ("sin(x, x)", "requires exactly 1 positional argument"),
+    ],
+)
+def test_nonlinear_function_arity(expression, message):
+    formula = bmb.Formula(f"y ~ a + {expression}", nlpars=("a",))
+
+    with pytest.raises(ValueError, match=message):
+        bmb.Model(formula, linear_data())
+
+
 def test_predictor_dependent_parameter_builds_expected_graph():
     data = linear_data()
     model = bmb.Model(exponential_formula(), data, priors=exponential_priors())
@@ -266,10 +348,6 @@ def test_group_specific_parameter_predicts_new_data(monkeypatch, sparse_dot):
             "No nonlinear parameter formula or data column",
         ),
         (
-            bmb.Formula("y ~ a + sin(x)", nlpars=("a",)),
-            "Unsupported nonlinear function 'sin'",
-        ),
-        (
             bmb.Formula("y ~ a + b * x", "a ~ 1 + b", nlpars=("a", "b")),
             "cannot depend on one another",
         ),
@@ -343,6 +421,15 @@ def test_vector_parent_is_rejected():
         bmb.Model(formula, linear_data(), family="categorical")
 
 
+def test_non_proportion_multicolumn_response_is_rejected():
+    data = linear_data()
+    data["status"] = "none"
+    formula = bmb.Formula("censored(y, status) ~ rate * x", nlpars=("rate",))
+
+    with pytest.raises(ValueError, match="one observed response or a proportion response"):
+        bmb.Model(formula, data)
+
+
 def test_dropna_aligns_all_model_inputs():
     data = linear_data(8)
     data.index = [4, 4, 2, 2, 9, 9, 1, 1]
@@ -363,6 +450,24 @@ def test_dropna_aligns_all_model_inputs():
     np.testing.assert_array_equal(model.backend.model["mu__x_data"].get_value(), data.x.iloc[4:])
     np.testing.assert_array_equal(model.nonlinear_predictors["a"].terms["z"].data, data.z.iloc[4:])
     assert_ip_dlogp(model)
+
+
+@pytest.mark.parametrize("column", ["successes", "attempts", "x"])
+def test_dropna_aligns_nonlinear_proportion_inputs(column):
+    data = pd.DataFrame(
+        {
+            "successes": [6.0, 13.0, 18.0],
+            "attempts": [59.0, 60.0, 62.0],
+            "x": [0.1, 0.2, 0.3],
+        }
+    )
+    data.loc[0, column] = np.nan
+    formula = bmb.Formula("prop(successes, attempts) ~ normal_cdf(a + b * x)", nlpars=("a", "b"))
+
+    model = bmb.Model(formula, data, family="binomial", link="identity", dropna=True)
+
+    assert len(model.data) == 2
+    assert not model.data[["successes", "attempts", "x"]].isna().any().any()
 
 
 @pytest.mark.parametrize("column", ["y", "x", "z"])
@@ -431,7 +536,7 @@ def test_unsupported_expression_syntax_is_rejected(expression):
         bmb.Model(formula, linear_data())
 
 
-@pytest.mark.parametrize("name", ["mu", "sigma", "exp", "x"])
+@pytest.mark.parametrize("name", ["mu", "sigma", "exp", "sin", "normal_cdf", "x"])
 def test_reserved_parameter_names_are_rejected(name):
     formula = bmb.Formula(f"y ~ {name}", nlpars=(name,))
     with pytest.raises(ValueError, match="names must not"):

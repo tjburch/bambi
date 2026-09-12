@@ -4,7 +4,44 @@ from dataclasses import dataclass
 import pandas as pd
 import formulae as fm
 
-SUPPORTED_FUNCTIONS = frozenset({"exp", "log", "sqrt"})
+FUNCTION_ARITIES = {
+    "exp": 1,
+    "log": 1,
+    "sqrt": 1,
+    "sin": 1,
+    "cos": 1,
+    "tan": 1,
+    "asin": 1,
+    "acos": 1,
+    "atan": 1,
+    "arcsin": 1,
+    "arccos": 1,
+    "arctan": 1,
+    "sinh": 1,
+    "cosh": 1,
+    "tanh": 1,
+    "asinh": 1,
+    "acosh": 1,
+    "atanh": 1,
+    "arcsinh": 1,
+    "arccosh": 1,
+    "arctanh": 1,
+    "atan2": 2,
+    "arctan2": 2,
+    "normal_cdf": 1,
+}
+
+FUNCTION_ALIASES = {
+    "asin": "arcsin",
+    "acos": "arccos",
+    "atan": "arctan",
+    "asinh": "arcsinh",
+    "acosh": "arccosh",
+    "atanh": "arctanh",
+    "atan2": "arctan2",
+}
+
+SUPPORTED_FUNCTIONS = frozenset(FUNCTION_ARITIES)
 
 
 class ExpressionNode:
@@ -44,10 +81,10 @@ class BinaryOperation(ExpressionNode):
 
 @dataclass(frozen=True)
 class FunctionCall(ExpressionNode):
-    """A call to a supported single-argument function."""
+    """A call to a supported function."""
 
     function: str
-    argument: ExpressionNode
+    arguments: tuple[ExpressionNode, ...]
 
 
 @dataclass(frozen=True)
@@ -304,10 +341,14 @@ def _convert_node(node: ast.AST, symbols: set[str]) -> ExpressionNode:
                 f"Unsupported nonlinear function '{node.func.id}'. "
                 f"Supported functions: {supported}."
             )
-        if len(node.args) != 1 or node.keywords:
+        arity = FUNCTION_ARITIES[node.func.id]
+        if len(node.args) != arity or node.keywords:
+            noun = "argument" if arity == 1 else "arguments"
             raise ValueError(
-                f"Nonlinear function '{node.func.id}' requires exactly one positional argument."
+                f"Nonlinear function '{node.func.id}' requires exactly {arity} positional {noun}."
             )
-        return FunctionCall(node.func.id, _convert_node(node.args[0], symbols))
+        return FunctionCall(
+            node.func.id, tuple(_convert_node(argument, symbols) for argument in node.args)
+        )
 
     raise ValueError(f"Unsupported syntax '{type(node).__name__}' in nonlinear expression.")

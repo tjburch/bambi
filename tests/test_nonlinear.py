@@ -3,7 +3,7 @@ import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
-from scipy.special import ndtr
+from scipy.special import erf, erfc, expit, logit, ndtr, ndtri
 
 import bambi as bmb
 
@@ -172,7 +172,11 @@ def test_supported_trigonometric_functions():
         f"{function}({'z' if function in ('acosh', 'arccosh') else 'x'})"
         for function in unary_functions
     )
-    expression += " + atan2(x, z) + arctan2(x, z) + normal_cdf(x) + a"
+    expression += " + atan2(x, z) + arctan2(x, z)"
+    expression += " + log1p(x) + expm1(x) + erf(x) + erfc(x)"
+    expression += " + logit(x) + invlogit(x) + expit(x)"
+    expression += " + normal_cdf(x) + norm_cdf(x) + normal_ppf(x) + norm_ppf(x)"
+    expression += " + cloglog(x) + invcloglog(x) + a"
     model = bmb.Model(
         bmb.Formula(f"y ~ {expression}", nlpars=("a",)),
         data,
@@ -203,7 +207,16 @@ def test_supported_trigonometric_functions():
         + 2 * np.arccosh(z)
         + 2 * np.arctanh(x)
         + 2 * np.arctan2(x, z)
-        + ndtr(x)
+        + np.log1p(x)
+        + np.expm1(x)
+        + erf(x)
+        + erfc(x)
+        + logit(x)
+        + 2 * expit(x)
+        + 2 * ndtr(x)
+        + 2 * ndtri(x)
+        + np.log(-np.log1p(-x))
+        - np.expm1(-np.exp(x))
         + 0.3
     )
     np.testing.assert_allclose(result, expected[None, None, :])

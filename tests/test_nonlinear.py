@@ -3,7 +3,7 @@ import pandas as pd
 import pymc as pm
 import pytest
 import xarray as xr
-from scipy.special import erf, erfc, expit, logit, ndtr, ndtri
+from scipy.special import erf, erfc, expit, logit, ndtr, ndtri  # pylint: disable=no-name-in-module
 
 import bambi as bmb
 
@@ -40,6 +40,25 @@ def exponential_priors(group_specific=False):
         "b": {"Intercept": normal_prior()},
         "k": {"Intercept": normal_prior()},
     }
+
+
+def evaluate_nonlinear_expression(expression, data):
+    data = data.assign(y=0.0)
+    model = bmb.Model(
+        bmb.Formula(f"y ~ {expression} + a", nlpars=("a",)),
+        data,
+        priors={"a": {"Intercept": normal_prior()}},
+    )
+    model.build()
+    draws = xr.Dataset(
+        {
+            "a_Intercept": (("chain", "draw"), [[0.0]]),
+            "sigma": (("chain", "draw"), [[1.0]]),
+        }
+    )
+
+    with model.backend.model:
+        return pm.compute_deterministics(draws, var_names=["mu"], progressbar=False)["mu"]
 
 
 def test_constant_parameters_match_linear_regression():
@@ -144,11 +163,9 @@ def test_supported_expression_operations():
     np.testing.assert_allclose(result, [[[5.0, 4.0]]])
 
 
-def test_supported_trigonometric_functions():
-    x = np.array([0.2, 0.5])
-    z = np.array([1.2, 1.5])
-    data = pd.DataFrame({"x": x, "z": z, "y": np.zeros(2)})
-    unary_functions = (
+@pytest.mark.parametrize(
+    "function",
+    [
         "sin",
         "cos",
         "tan",
@@ -167,63 +184,97 @@ def test_supported_trigonometric_functions():
         "arcsinh",
         "arccosh",
         "arctanh",
-    )
-    expression = " + ".join(
-        f"{function}({'z' if function in ('acosh', 'arccosh') else 'x'})"
-        for function in unary_functions
-    )
-    expression += " + atan2(x, z) + arctan2(x, z)"
-    expression += " + log1p(x) + expm1(x) + softplus(x) + erf(x) + erfc(x)"
-    expression += " + logit(x) + invlogit(x) + expit(x)"
-    expression += " + normal_cdf(x) + norm_cdf(x) + normal_ppf(x) + norm_ppf(x)"
-    expression += " + probit(x) + invprobit(x)"
-    expression += " + cloglog(x) + invcloglog(x) + a"
-    model = bmb.Model(
-        bmb.Formula(f"y ~ {expression}", nlpars=("a",)),
-        data,
-        priors={"a": {"Intercept": normal_prior()}},
-    )
-    model.build()
-    draws = xr.Dataset(
-        {
-            "a_Intercept": (("chain", "draw"), [[0.3]]),
-            "sigma": (("chain", "draw"), [[1.0]]),
-        }
+        "log1p",
+        "expm1",
+        "softplus",
+        "erf",
+        "erfc",
+    ],
+)
+def test_supported_unary_math_functions(function):
+    x = np.array([0.2, 0.5])
+    z = np.array([1.2, 1.5])
+    references = {
+        "sin": np.sin,
+        "cos": np.cos,
+        "tan": np.tan,
+        "asin": np.arcsin,
+        "acos": np.arccos,
+        "atan": np.arctan,
+        "arcsin": np.arcsin,
+        "arccos": np.arccos,
+        "arctan": np.arctan,
+        "sinh": np.sinh,
+        "cosh": np.cosh,
+        "tanh": np.tanh,
+        "asinh": np.arcsinh,
+        "acosh": np.arccosh,
+        "atanh": np.arctanh,
+        "arcsinh": np.arcsinh,
+        "arccosh": np.arccosh,
+        "arctanh": np.arctanh,
+        "log1p": np.log1p,
+        "expm1": np.expm1,
+        "softplus": lambda value: np.logaddexp(0, value),
+        "erf": erf,
+        "erfc": erfc,
+    }
+    argument_name = "z" if function in {"acosh", "arccosh"} else "x"
+    argument = z if argument_name == "z" else x
+
+    result = evaluate_nonlinear_expression(
+        f"{function}({argument_name})", pd.DataFrame({"x": x, "z": z})
     )
 
-    with model.backend.model:
-        result = pm.compute_deterministics(draws, var_names=["mu"], progressbar=False)["mu"]
-
-    expected = (
-        np.sin(x)
-        + np.cos(x)
-        + np.tan(x)
-        + 2 * np.arcsin(x)
-        + 2 * np.arccos(x)
-        + 2 * np.arctan(x)
-        + np.sinh(x)
-        + np.cosh(x)
-        + np.tanh(x)
-        + 2 * np.arcsinh(x)
-        + 2 * np.arccosh(z)
-        + 2 * np.arctanh(x)
-        + 2 * np.arctan2(x, z)
-        + np.log1p(x)
-        + np.expm1(x)
-        + np.logaddexp(0, x)
-        + erf(x)
-        + erfc(x)
-        + logit(x)
-        + 2 * expit(x)
-        + 2 * ndtr(x)
-        + 2 * ndtri(x)
-        + ndtri(x)
-        + ndtr(x)
-        + np.log(-np.log1p(-x))
-        - np.expm1(-np.exp(x))
-        + 0.3
-    )
+    expected = references[function](argument)
     np.testing.assert_allclose(result, expected[None, None, :])
+
+
+@pytest.mark.parametrize("function", ["atan2", "arctan2"])
+def test_supported_two_argument_functions(function):
+    x = np.array([0.2, 0.5])
+    z = np.array([1.2, 1.5])
+
+    result = evaluate_nonlinear_expression(f"{function}(x, z)", pd.DataFrame({"x": x, "z": z}))
+
+    np.testing.assert_allclose(result, np.arctan2(x, z)[None, None, :])
+
+
+@pytest.mark.parametrize(
+    "function",
+    [
+        "logit",
+        "invlogit",
+        "expit",
+        "normal_cdf",
+        "norm_cdf",
+        "normal_ppf",
+        "norm_ppf",
+        "probit",
+        "invprobit",
+        "cloglog",
+        "invcloglog",
+    ],
+)
+def test_supported_probability_transforms(function):
+    x = np.array([0.2, 0.5])
+    references = {
+        "logit": logit,
+        "invlogit": expit,
+        "expit": expit,
+        "normal_cdf": ndtr,
+        "norm_cdf": ndtr,
+        "normal_ppf": ndtri,
+        "norm_ppf": ndtri,
+        "probit": ndtri,
+        "invprobit": ndtr,
+        "cloglog": lambda value: np.log(-np.log1p(-value)),
+        "invcloglog": lambda value: -np.expm1(-np.exp(value)),
+    }
+
+    result = evaluate_nonlinear_expression(f"{function}(x)", pd.DataFrame({"x": x}))
+
+    np.testing.assert_allclose(result, references[function](x)[None, None, :])
 
 
 @pytest.mark.parametrize(
@@ -482,9 +533,11 @@ def test_dropna_aligns_nonlinear_proportion_inputs(column):
     formula = bmb.Formula("prop(successes, attempts) ~ normal_cdf(a + b * x)", nlpars=("a", "b"))
 
     model = bmb.Model(formula, data, family="binomial", link="identity", dropna=True)
+    model.build()
 
-    assert len(model.data) == 2
-    assert not model.data[["successes", "attempts", "x"]].isna().any().any()
+    pd.testing.assert_frame_equal(model.data, data.iloc[1:])
+    np.testing.assert_array_equal(model.response_term.data, data.loc[1:, ["successes", "attempts"]])
+    np.testing.assert_array_equal(model.backend.model["p__x_data"].get_value(), data.x.iloc[1:])
 
 
 @pytest.mark.parametrize("column", ["y", "x", "z"])

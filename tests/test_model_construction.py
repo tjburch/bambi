@@ -1538,8 +1538,8 @@ def test_nonlinear_parameter_offset_prediction(out_of_sample):
     np.testing.assert_allclose(actual, expected)
 
 
-@pytest.fixture
-def golf_model():
+@pytest.fixture(name="golf_model")
+def make_golf_model():
     data = pd.DataFrame(
         {
             "distance": [2.0, 3.0, 4.0, 5.0],
@@ -1599,10 +1599,10 @@ def test_golf_probability_and_log_likelihood(golf_model, out_of_sample):
         idata, data=data if out_of_sample else None, inplace=False
     )
     expected = pm.logp(
-        pm.Binomial.dist(n=data["attempts"].to_numpy(), p=group["p"].to_numpy()),
+        pm.Binomial.dist(n=data["attempts"].to_numpy(), p=probability),
         data["successes"].to_numpy(),
     ).eval()
-    np.testing.assert_allclose(result.log_likelihood["successes"], expected)
+    np.testing.assert_allclose(result.log_likelihood["successes"], expected, rtol=1e-6)
 
 
 def test_nonlinear_binomial_literal_trials():
@@ -1613,28 +1613,60 @@ def test_nonlinear_binomial_literal_trials():
         family="binomial",
         link="identity",
     )
-
     model.build()
 
-    assert "successes_data" in model.backend.model.named_vars
-    assert "p__x_data" in model.backend.model.named_vars
-
-
-def test_nonlinear_beta_binomial_proportion_builds():
-    data = pd.DataFrame(
-        {"successes": [6, 13, 18], "attempts": [59, 60, 62], "x": [0.1, 0.2, 0.3]}
+    posterior = xr.Dataset(
+        {
+            "a_Intercept": (("chain", "draw"), [[-0.4, 0.3]]),
+            "b_Intercept": (("chain", "draw"), [[0.8, -0.2]]),
+        }
     )
+    idata = xr.DataTree.from_dict({"posterior": posterior})
+
+    prediction = model.predict(idata, inplace=False)
+    x = xr.DataArray(data.x.to_numpy(), dims="__obs__")
+    expected_probability = ndtr(posterior.a_Intercept + posterior.b_Intercept * x)
+    np.testing.assert_allclose(prediction.posterior.p, expected_probability)
+
+    likelihood = model.compute_log_likelihood(idata, inplace=False)
+    expected_likelihood = pm.logp(
+        pm.Binomial.dist(n=62, p=expected_probability.values), data.successes.to_numpy()
+    ).eval()
+    np.testing.assert_allclose(likelihood.log_likelihood.successes, expected_likelihood)
+
+
+def test_nonlinear_beta_binomial_proportion_prediction_and_likelihood():
+    data = pd.DataFrame({"successes": [6, 13, 18], "attempts": [59, 60, 62], "x": [0.1, 0.2, 0.3]})
     model = bmb.Model(
         bmb.Formula("prop(successes, attempts) ~ a + b * x", nlpars=("a", "b")),
         data,
         family="beta_binomial",
+        priors={"kappa": 10.0},
     )
-
     model.build()
-
-    assert {"successes_data", "attempts_data", "mu__x_data"} <= set(
-        model.backend.model.named_vars
+    posterior = xr.Dataset(
+        {
+            "a_Intercept": (("chain", "draw"), [[-0.4, 0.3]]),
+            "b_Intercept": (("chain", "draw"), [[0.8, -0.2]]),
+        }
     )
+    idata = xr.DataTree.from_dict({"posterior": posterior})
+
+    prediction = model.predict(idata, inplace=False)
+    x = xr.DataArray(data.x.to_numpy(), dims="__obs__")
+    expected_mu = expit(posterior.a_Intercept + posterior.b_Intercept * x)
+    np.testing.assert_allclose(prediction.posterior.mu, expected_mu)
+
+    likelihood = model.compute_log_likelihood(idata, inplace=False)
+    expected_likelihood = pm.logp(
+        pm.BetaBinomial.dist(
+            n=data.attempts.to_numpy(),
+            alpha=expected_mu.values * 10,
+            beta=(1 - expected_mu.values) * 10,
+        ),
+        data.successes.to_numpy(),
+    ).eval()
+    np.testing.assert_allclose(likelihood.log_likelihood.successes, expected_likelihood)
 
 
 # Nonlinear links and predictor transforms

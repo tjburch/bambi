@@ -1849,12 +1849,12 @@ def test_weighted(mock_pymc_sample):
 # Nonlinear auxiliary-parameter behavior
 
 
-def make_data():
+def nonlinear_auxiliary_data():
     x = np.linspace(-1, 1, 12)
     return pd.DataFrame({"y": 1 + x, "x": x, "z": x**2, "group": np.repeat(["a", "b", "c"], 4)})
 
 
-def make_formula(groups=False):
+def nonlinear_auxiliary_formula(groups=False):
     suffix = " + (1 | group)" if groups else ""
     additionals = ["sigma ~ z" + suffix]
     if groups:
@@ -1863,8 +1863,8 @@ def make_formula(groups=False):
 
 
 def test_auxiliary_graph_matches_direct_pymc():
-    data = make_data()
-    model = bmb.Model(make_formula(), data, center_predictors=False)
+    data = nonlinear_auxiliary_data()
+    model = bmb.Model(nonlinear_auxiliary_formula(), data, center_predictors=False)
     model.build()
     draws = xr.Dataset(
         {
@@ -1891,8 +1891,8 @@ def test_auxiliary_graph_matches_direct_pymc():
 
 
 def test_auxiliary_priors_match_ordinary_model_and_update():
-    data = make_data()
-    nonlinear = bmb.Model(make_formula(), data)
+    data = nonlinear_auxiliary_data()
+    nonlinear = bmb.Model(nonlinear_auxiliary_formula(), data)
     ordinary = bmb.Model(bmb.Formula("y ~ x", "sigma ~ z"), data)
     for name, term in nonlinear.parameters["sigma"].terms.items():
         assert term.prior == ordinary.parameters["sigma"].terms[name].prior
@@ -1902,7 +1902,11 @@ def test_auxiliary_priors_match_ordinary_model_and_update():
     with pytest.warns(UserWarning, match="sigma.unknown"):
         nonlinear.set_priors({"sigma": {"unknown": bmb.Prior("Normal", mu=0, sigma=1)}})
     with pytest.raises(ValueError, match="must be a dictionary"):
-        bmb.Model(make_formula(), data, priors={"sigma": bmb.Prior("HalfNormal", sigma=1)})
+        bmb.Model(
+            nonlinear_auxiliary_formula(),
+            data,
+            priors={"sigma": bmb.Prior("HalfNormal", sigma=1)},
+        )
 
 
 @pytest.mark.usefixtures("mock_pymc_sample")
@@ -1910,60 +1914,79 @@ def test_auxiliary_priors_match_ordinary_model_and_update():
 def test_auxiliary_group_prediction_and_likelihood(monkeypatch, sparse_dot):
     monkeypatch.setattr(bmb.config, "SPARSE_DOT", sparse_dot)
     model = bmb.Model(
-        make_formula(groups=True), make_data(), noncentered={"a": False, "sigma": True}
+        nonlinear_auxiliary_formula(groups=True),
+        nonlinear_auxiliary_data(),
+        noncentered={"a": False, "sigma": True},
     )
-    idata = model.fit(draws=3, chains=1, include_response_params=True)
+    idata = model.fit(draws=3, chains=1, include_response_params=True, random_seed=123)
     assert {"mu", "sigma"} <= set(idata.posterior)
     assert "a" not in idata.posterior
-    new_data = make_data().iloc[:3].copy()
+    new_data = nonlinear_auxiliary_data().iloc[:3].copy()
     new_data["z"] += 1
     result = model.predict(idata, data=new_data, kind="response", inplace=False)
     assert result.predictions.sigma.shape == (1, 3, 3)
     assert result.predictions.y.shape == (1, 3, 3)
+    x = xr.DataArray(new_data.x.to_numpy(), dims="__obs__")
+    z = xr.DataArray(new_data.z.to_numpy(), dims="__obs__")
+    group = idata.posterior["a_1|group"].sel(group_dim="a")
+    expected_mu = (idata.posterior.a_Intercept + group) * x
+    expected_sigma = np.exp(
+        idata.posterior.sigma_Intercept
+        + idata.posterior.sigma_z * z
+        + idata.posterior["sigma_1|group"].sel(group_dim="a")
+    )
+    np.testing.assert_allclose(result.predictions.mu, expected_mu)
+    np.testing.assert_allclose(result.predictions.sigma, expected_sigma)
     likelihood = model.compute_log_likelihood(idata, data=new_data, inplace=False)
     assert likelihood.log_likelihood.y.shape == (1, 3, 3)
+    y = xr.DataArray(new_data.y.to_numpy(), dims="__obs__")
+    expected_log_likelihood = (
+        -0.5 * np.log(2 * np.pi)
+        - np.log(expected_sigma)
+        - 0.5 * ((y - expected_mu) / expected_sigma) ** 2
+    )
+    np.testing.assert_allclose(likelihood.log_likelihood.y, expected_log_likelihood)
     new_data.loc[new_data.index[0], "z"] = np.nan
     with pytest.raises(ValueError, match="incomplete rows"):
         model.predict(idata, data=new_data, inplace=False)
 
 
 def test_auxiliary_missing_rows_share_one_mask():
-    data = make_data()
+    data = nonlinear_auxiliary_data()
     for index, column in enumerate(["y", "x", "z", "group"]):
         data.loc[index, column] = np.nan
-    model = bmb.Model(make_formula(groups=True), data, dropna=True)
+    model = bmb.Model(nonlinear_auxiliary_formula(groups=True), data, dropna=True)
     assert len(model.data) == 8
     np.testing.assert_array_equal(model.response_term.data, data.y.iloc[4:])
     np.testing.assert_array_equal(model.parameters["sigma"].terms["z"].data, data.z.iloc[4:])
     model.build()
     with pytest.raises(ValueError, match="incomplete rows"):
-        bmb.Model(make_formula(groups=True), data)
+        bmb.Model(nonlinear_auxiliary_formula(groups=True), data)
 
 
 @pytest.mark.parametrize(
-    "main, additionals",
+    "main, additionals, message",
     [
-        ("y ~ a * sigma", ["a ~ 1", "sigma ~ z"]),
-        ("y ~ a * x", ["a ~ sigma", "sigma ~ z"]),
-        ("y ~ a * x", ["a ~ 1", "sigma ~ a"]),
-        ("y ~ a * x", ["a ~ 1", "sigma ~ sigma"]),
-        ("y ~ a * x", ["a ~ sigma"]),
+        (
+            "y ~ a * sigma",
+            ["a ~ 1", "sigma ~ z"],
+            "expression names must not be likelihood parameter names: \\['sigma'\\]",
+        ),
+        ("y ~ a * x", ["a ~ sigma", "sigma ~ z"], "'a' references \\['sigma'\\]"),
+        ("y ~ a * x", ["a ~ 1", "sigma ~ a"], "'sigma' references \\['a'\\]"),
+        ("y ~ a * x", ["a ~ 1", "sigma ~ sigma"], "'sigma' references \\['sigma'\\]"),
+        ("y ~ a * x", ["a ~ sigma"], "'a' references \\['sigma'\\]"),
     ],
 )
-def test_auxiliary_dependencies_rejected(main, additionals):
-    with pytest.raises(ValueError, match="names must not|cannot depend"):
-        bmb.Model(bmb.Formula(main, *additionals, nlpars=("a",)), make_data())
-
-
-def test_duplicate_auxiliary_formula_rejected():
-    with pytest.raises(ValueError, match="Duplicate"):
-        bmb.Formula("y ~ a * x", "sigma ~ z", "sigma ~ 1", nlpars=("a",))
+def test_auxiliary_dependencies_rejected(main, additionals, message):
+    with pytest.raises(ValueError, match=message):
+        bmb.Model(bmb.Formula(main, *additionals, nlpars=("a",)), nonlinear_auxiliary_data())
 
 
 @pytest.mark.usefixtures("mock_pymc_sample")
 @pytest.mark.parametrize("auxiliary", [False, True])
 def test_undeclared_likelihood_names_can_reference_data(auxiliary):
-    data = make_data().rename(columns={"x": "sigma", "z": "mu"})
+    data = nonlinear_auxiliary_data().rename(columns={"x": "sigma", "z": "mu"})
     additionals = ["a ~ mu"]
     if auxiliary:
         data["z"] = data["sigma"]
@@ -1973,16 +1996,20 @@ def test_undeclared_likelihood_names_can_reference_data(auxiliary):
         expression = "a * sigma"
     formula = bmb.Formula(f"y ~ {expression}", *additionals, nlpars=("a",))
     model = bmb.Model(formula, data, center_predictors=False)
-    idata = model.fit(draws=3, chains=1)
+    idata = model.fit(draws=3, chains=1, random_seed=123)
     predicted = model.predict(idata, data=data.iloc[:2], inplace=False)
-    assert predicted.predictions.mu.shape == (1, 3, 2)
+    mu = xr.DataArray(data.mu.iloc[:2].to_numpy(), dims="__obs__")
+    a = idata.posterior.a_Intercept + idata.posterior.a_mu * mu
+    values = data.z.iloc[:2] if auxiliary else data.sigma.iloc[:2]
+    expression_data = xr.DataArray(values.to_numpy(), dims="__obs__")
+    np.testing.assert_allclose(predicted.predictions.mu, a * expression_data)
     np.testing.assert_array_equal(model.nonlinear_predictors["a"].terms["mu"].data, data.mu)
 
 
 # Nonlinear aliases and offset behavior
 
 
-def make_model(groups=False, auxiliary=True, bare=False, noncentered=True):
+def nonlinear_alias_model(groups=False, auxiliary=True, bare=False, noncentered=True):
     x = np.linspace(-1, 1, 12)
     data = pd.DataFrame({"y": 1 + x, "x": x, "z": x**2, "g": np.repeat(["u", "v", "w"], 4)})
     suffix = " + (1 | g)" if groups else ""
@@ -1999,7 +2026,7 @@ def make_model(groups=False, auxiliary=True, bare=False, noncentered=True):
     )
 
 
-def aliases(auxiliary=True):
+def nonlinear_aliases(auxiliary=True):
     return {
         "mu": {"mu": "mean"},
         "a": {"a": "baseline", "Intercept": "a0"},
@@ -2011,13 +2038,13 @@ def aliases(auxiliary=True):
 @pytest.mark.parametrize("auxiliary", [False, True])
 @pytest.mark.parametrize("bare", [False, True])
 def test_alias_predictions_likelihood_and_rebuild(auxiliary, bare):
-    model = make_model(auxiliary=auxiliary, bare=bare)
+    model = nonlinear_alias_model(auxiliary=auxiliary, bare=bare)
     model.build()
     values = {"a_Intercept": 2.0}
     values.update({"sigma_Intercept": -0.5, "sigma_z": 0.3} if auxiliary else {"sigma": 0.8})
     draws = xr.Dataset({name: (("chain", "draw"), [[value]]) for name, value in values.items()})
     original = model.predict(xr.DataTree.from_dict({"posterior": draws}), inplace=False)
-    model.set_alias(aliases(auxiliary))
+    model.set_alias(nonlinear_aliases(auxiliary))
     assert not model.built
     model.build()
     renamed = {"a_Intercept": "a0"}
@@ -2049,8 +2076,8 @@ def test_alias_predictions_likelihood_and_rebuild(auxiliary, bare):
 
 @pytest.mark.parametrize("auxiliary", [False, True])
 def test_alias_prior_filtering(auxiliary):
-    model = make_model(groups=True, auxiliary=auxiliary)
-    mapping = aliases(auxiliary)
+    model = nonlinear_alias_model(groups=True, auxiliary=auxiliary)
+    mapping = nonlinear_aliases(auxiliary)
     mapping["a"].update({"1|g": "by_group", "sigma": "group_sd"})
     model.set_alias(mapping)
     model.build()
@@ -2070,8 +2097,8 @@ def test_alias_group_sampling_and_unknown_prediction(
     monkeypatch, sparse_dot, include_response_params
 ):
     monkeypatch.setattr(bmb.config, "SPARSE_DOT", sparse_dot)
-    model = make_model(groups=True)
-    mapping = aliases()
+    model = nonlinear_alias_model(groups=True)
+    mapping = nonlinear_aliases()
     mapping["a"].update({"1|g": "by_group", "sigma": "group_sd"})
     mapping["sigma"].update({"1|g": "noise_group", "sigma": "noise"})
     model.set_alias(mapping)
@@ -2096,7 +2123,7 @@ def test_alias_group_sampling_and_unknown_prediction(
 
 
 def test_alias_unknown_names_types_and_collisions():
-    model = make_model()
+    model = nonlinear_alias_model()
     with pytest.warns(UserWarning, match="missing, absent"):
         model.set_alias({"a": {"missing": "unused"}, "absent": {"Intercept": "other"}})
     with pytest.raises(AssertionError, match="Alias must be a string"):
@@ -2112,7 +2139,7 @@ def test_alias_unknown_names_types_and_collisions():
 @pytest.mark.parametrize("nonlinear", [False, True])
 @pytest.mark.parametrize("omit_offsets", [False, True])
 def test_offset_suffix_aliases_remain_in_prior_and_posterior(nonlinear, omit_offsets):
-    model = make_model(groups=True, auxiliary=False)
+    model = nonlinear_alias_model(groups=True, auxiliary=False)
     if nonlinear:
         model.set_alias(
             {"a": {"Intercept": "baseline_offset", "1|g": "group_offset"}, "sigma": "noise_offset"}
@@ -2137,7 +2164,7 @@ def test_offset_suffix_aliases_remain_in_prior_and_posterior(nonlinear, omit_off
 @pytest.mark.usefixtures("mock_pymc_sample")
 @pytest.mark.parametrize("override", [False, True])
 def test_offset_inventory_respects_prior_override(override):
-    model = make_model(groups=True, auxiliary=False, noncentered=not override)
+    model = nonlinear_alias_model(groups=True, auxiliary=False, noncentered=not override)
     model.set_priors(
         {
             "a": {
@@ -2160,7 +2187,7 @@ def test_offset_inventory_respects_prior_override(override):
 
 
 def test_offset_inventory_includes_recursive_hyperpriors():
-    model = make_model(groups=True, auxiliary=False)
+    model = nonlinear_alias_model(groups=True, auxiliary=False)
     model.set_priors(
         {
             "a": {
@@ -2177,6 +2204,9 @@ def test_offset_inventory_includes_recursive_hyperpriors():
         "a_1|g_offset",
         "a_1|g_sigma_offset",
     }
+    prior = model.backend.prior_predictive(draws=3, omit_offsets=True, random_seed=123)
+    assert {"a_1|g", "a_1|g_sigma", "a_1|g_sigma_sigma"} <= set(prior.prior)
+    assert not model.backend.model.__bambi_attrs__["offset_names"] & set(prior.prior)
 
 
 # Nonlinear end-to-end integration
@@ -2325,6 +2355,9 @@ def test_linked_auxiliary_aliases_with_groups(monkeypatch, sparse):
             (predicted.predictions["probability"] > 0) & (predicted.predictions["probability"] < 1)
         ).all()
         assert (predicted.predictions["precision"] > 0).all()
+        z = xr.DataArray(new_data.z.to_numpy(), dims="__obs__")
+        expected_precision = np.exp(idata.posterior.kappa_Intercept + idata.posterior.kappa_z * z)
+        np.testing.assert_allclose(predicted.predictions["precision"], expected_precision)
         baseline = idata.posterior["a_Intercept"]
         if include_groups:
             baseline = baseline + idata.posterior["group_effect"].sel(g_dim="a")

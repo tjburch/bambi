@@ -1372,7 +1372,7 @@ def test_predict_without_group_specific_effect_multivariate(
 
 
 @pytest.fixture
-def exponential_model():
+def nonlinear_exponential_model():
     data = pd.DataFrame(
         {"x": [0.0, 0.5, 1.5, 3.0], "z": [-1.0, 0.0, 0.5, 2.0], "y": [2.0, 1.5, 1.0, 0.8]}
     )
@@ -1395,8 +1395,8 @@ def exponential_model():
     return model
 
 
-def test_exponential_log_density_matches_direct_pymc(exponential_model):
-    data = exponential_model.data
+def test_exponential_log_density_matches_direct_pymc(nonlinear_exponential_model):
+    data = nonlinear_exponential_model.data
     with pm.Model(coords={"__obs__": np.arange(len(data))}) as reference:
         x = pm.Data("x", data["x"], dims="__obs__")
         z = pm.Data("z", data["z"], dims="__obs__")
@@ -1408,7 +1408,7 @@ def test_exponential_log_density_matches_direct_pymc(exponential_model):
         mu = a_intercept + a_z * z + b * pm.math.exp(-k * x)
         pm.Normal("y", mu=mu, sigma=sigma, observed=data["y"], dims="__obs__")
 
-    actual_logp = exponential_model.backend.model.compile_logp()
+    actual_logp = nonlinear_exponential_model.backend.model.compile_logp()
     expected_logp = reference.compile_logp()
     for a_intercept, a_z, b, k, sigma in [(0.4, 0.2, 1.5, 0.8, 0.3), (-0.2, 0.5, 2, 1.2, 0.7)]:
         point = {
@@ -1422,7 +1422,7 @@ def test_exponential_log_density_matches_direct_pymc(exponential_model):
 
 
 @pytest.mark.parametrize("out_of_sample", [False, True])
-def test_exponential_log_likelihood_matches_normal(exponential_model, out_of_sample):
+def test_exponential_log_likelihood_matches_normal(nonlinear_exponential_model, out_of_sample):
     posterior = xr.Dataset(
         {
             "a_Intercept": (("chain", "draw"), [[0.4, -0.2]]),
@@ -1436,9 +1436,9 @@ def test_exponential_log_likelihood_matches_normal(exponential_model, out_of_sam
     data = (
         pd.DataFrame({"x": [0.2, 2.5], "z": [1.5, -0.5], "y": [2.2, 0.3]})
         if out_of_sample
-        else exponential_model.data
+        else nonlinear_exponential_model.data
     )
-    result = exponential_model.compute_log_likelihood(
+    result = nonlinear_exponential_model.compute_log_likelihood(
         idata, data=data if out_of_sample else None, inplace=False
     )
     x = xr.DataArray(data["x"].to_numpy(), dims="__obs__")
@@ -1698,7 +1698,7 @@ def test_invalid_family_link_remains_rejected():
         )
 
 
-def test_bare_predictor_preserves_parent_name_in_new_data():
+def test_bare_nonlinear_predictor_broadcasts_without_data_columns():
     model = bmb.Model(
         bmb.Formula("y ~ a", nlpars=("a",)),
         pd.DataFrame({"y": [0, 1]}),

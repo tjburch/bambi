@@ -77,6 +77,46 @@ def test_resolve_nonlinear_symbols_rejects_ambiguous_name():
         resolve_nonlinear_symbols(expression, ("mu",), data)
 
 
+@pytest.mark.parametrize(
+    ("main", "additionals", "message"),
+    [
+        ("y ~ mu + a * x", (), "cannot depend on themselves.*mu"),
+        ("y ~ sigma * a", ("sigma ~ mu + 1",), "mu -> sigma -> mu"),
+        (
+            "y ~ a * x",
+            ("a ~ sigma", "sigma ~ mu + 1"),
+            "a -> sigma -> mu -> a",
+        ),
+        (
+            "y ~ a * x",
+            ("sigma ~ mu + unknown",),
+            "No nonlinear parameter formula or data column.*unknown",
+        ),
+    ],
+)
+def test_parameter_dependency_validation(main, additionals, message):
+    formula = bmb.Formula(main, *additionals, nlpars=("a",))
+    with pytest.raises(ValueError, match=message):
+        bmb.Model(formula, linear_data())
+
+
+def test_likelihood_parameter_and_expression_data_collision_is_rejected():
+    data = linear_data().assign(mu=0.5)
+    formula = bmb.Formula("y ~ a * x", "sigma ~ mu + z", nlpars=("a",))
+
+    with pytest.raises(ValueError, match="both modeled parameters and data columns.*mu"):
+        bmb.Model(formula, data)
+
+
+@pytest.mark.parametrize("response", ["mu", "sigma"])
+def test_likelihood_parameter_and_response_data_collision_is_rejected(response):
+    data = linear_data().rename(columns={"y": response})
+    formula = bmb.Formula(f"{response} ~ a * x", nlpars=("a",))
+
+    with pytest.raises(ValueError, match=f"modeled likelihood parameters.*{response}"):
+        bmb.Model(formula, data)
+
+
 def exponential_formula(group_specific=False):
     a_formula = "a ~ 1 + (1 | group)" if group_specific else "a ~ 1 + z"
     return bmb.Formula(

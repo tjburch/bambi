@@ -1964,51 +1964,6 @@ def test_auxiliary_missing_rows_share_one_mask():
         bmb.Model(nonlinear_auxiliary_formula(groups=True), data)
 
 
-def test_one_edge_parameter_dependency_matches_direct_calculation():
-    data = nonlinear_auxiliary_data()
-    formula = bmb.Formula("y ~ a * x", "sigma ~ a ** 2 + 0.1", nlpars=("a",))
-    model = bmb.Model(formula, data, center_predictors=False)
-    model.build()
-    draws = xr.Dataset({"a_Intercept": (("chain", "draw"), [[0.5, -0.25]])})
-
-    with model.backend.model:
-        actual = pm.compute_deterministics(draws, var_names=["sigma"], progressbar=False)
-
-    expected = (draws.a_Intercept**2 + 0.1).values[..., None]
-    np.testing.assert_allclose(actual.sigma, np.broadcast_to(expected, actual.sigma.shape))
-
-
-@pytest.mark.parametrize(
-    ("main", "additionals", "message"),
-    [
-        ("y ~ mu + a * x", (), "cannot depend on themselves.*mu"),
-        ("y ~ sigma * a", ("sigma ~ mu + 1",), "mu -> sigma -> mu"),
-        (
-            "y ~ a * x",
-            ("a ~ sigma", "sigma ~ mu + 1"),
-            "a -> sigma -> mu -> a",
-        ),
-        (
-            "y ~ a * x",
-            ("sigma ~ mu + unknown",),
-            "No nonlinear parameter formula or data column.*unknown",
-        ),
-    ],
-)
-def test_parameter_dependency_validation(main, additionals, message):
-    formula = bmb.Formula(main, *additionals, nlpars=("a",))
-    with pytest.raises(ValueError, match=message):
-        bmb.Model(formula, nonlinear_auxiliary_data())
-
-
-def test_likelihood_parameter_and_data_column_collision_is_rejected():
-    data = nonlinear_auxiliary_data().assign(mu=0.5)
-    formula = bmb.Formula("y ~ a * x", "sigma ~ mu + z", nlpars=("a",))
-
-    with pytest.raises(ValueError, match="both modeled parameters and data columns.*mu"):
-        bmb.Model(formula, data)
-
-
 # Nonlinear aliases and offset behavior
 
 

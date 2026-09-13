@@ -1371,6 +1371,35 @@ def test_predict_without_group_specific_effect_multivariate(
 # Nonlinear backend construction
 
 
+def test_one_edge_parameter_dependency_matches_direct_calculation():
+    data = pd.DataFrame({"y": [0.2, 0.3, 0.4], "x": [1.0, 2.0, 3.0]})
+    formula = bmb.Formula("y ~ a * x", "sigma ~ a ** 2 + 0.1", nlpars=("a",))
+    model = bmb.Model(formula, data, center_predictors=False)
+    model.build()
+    draws = xr.Dataset({"a_Intercept": (("chain", "draw"), [[0.5, -0.25]])})
+
+    with model.backend.model:
+        actual = pm.compute_deterministics(draws, var_names=["sigma"], progressbar=False)
+
+    expected = (draws.a_Intercept**2 + 0.1).values[..., None]
+    np.testing.assert_allclose(actual.sigma, np.broadcast_to(expected, actual.sigma.shape))
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+def test_intermediate_parameter_is_filtered_from_prior_and_posterior():
+    data = pd.DataFrame({"y": [0.2, 0.3, 0.4], "x": [1.0, 2.0, 3.0]})
+    formula = bmb.Formula("y ~ a * x", "a ~ b + 1", nlpars=("a", "b"))
+    model = bmb.Model(formula, data, center_predictors=False)
+    model.build()
+
+    prior = model.backend.prior_predictive(draws=2, prior_only=True, random_seed=123)
+    idata = model.fit(draws=2, chains=1, include_response_params=True, random_seed=123)
+
+    assert "a" not in prior.prior
+    assert "a" not in idata.posterior
+    assert {"b_Intercept", "mu"} <= set(idata.posterior.data_vars)
+
+
 @pytest.fixture
 def nonlinear_parameter_dag_model():
     data = pd.DataFrame(

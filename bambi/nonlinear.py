@@ -183,8 +183,6 @@ class NonlinearParameter:
         other parameter expressions are on the response scale.
     data_names : tuple of str
         Observed data columns referenced directly by the expression.
-    dependencies : tuple of str
-        Modeled parameters referenced directly by the expression.
     alias : str or None
         Name used in the backend graph and posterior output.
     is_parent : bool
@@ -194,7 +192,6 @@ class NonlinearParameter:
     name: str
     expression: NonlinearExpression
     data_names: tuple[str, ...]
-    dependencies: tuple[str, ...] = ()
     alias: str | None = None
     is_parent: bool = True
 
@@ -237,47 +234,6 @@ def split_nonlinear_formula(formula: str) -> tuple[str, str]:
     if not separator or not lhs.strip() or not rhs.strip() or "~" in rhs:
         raise ValueError("A nonlinear formula must have the form 'response ~ expression'.")
     return f"{lhs.strip()} ~ 1", rhs.strip()
-
-
-def resolve_nonlinear_data_names(expression, predictors, data) -> tuple[str, ...]:
-    """Resolve and validate observed columns used by a nonlinear expression.
-
-    Parameters
-    ----------
-    expression : NonlinearExpression
-        Parsed nonlinear expression.
-    predictors : Mapping
-        Modeled nonlinear parameters keyed by their original names.
-    data : pandas.DataFrame
-        Model data containing observed expression inputs.
-
-    Returns
-    -------
-    tuple of str
-        Sorted names of numeric data columns used directly by the expression.
-
-    Raises
-    ------
-    ValueError
-        If a symbol is unresolved or an expression input is not numeric.
-    """
-    predictor_names = set(predictors)
-    data_names = expression.symbols - predictor_names
-    unknown = data_names - set(data.columns)
-    if unknown:
-        raise ValueError(
-            "No nonlinear parameter formula or data column was found for symbol(s): "
-            f"{sorted(unknown)}."
-        )
-
-    nonnumeric = [
-        name for name in sorted(data_names) if not pd.api.types.is_numeric_dtype(data[name])
-    ]
-    if nonnumeric:
-        raise ValueError(
-            f"Nonlinear expression data must be numeric. Invalid column(s): {nonnumeric}."
-        )
-    return tuple(sorted(data_names))
 
 
 def resolve_nonlinear_symbols(expression, parameter_names, data):

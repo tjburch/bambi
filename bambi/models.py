@@ -203,6 +203,13 @@ class Model:
 
             response_formula, nonlinear_source = split_nonlinear_formula(self.formula.main)
             nonlinear_expression = NonlinearExpression.parse(nonlinear_source)
+            response_names = set(fm.model_description(response_formula).var_names)
+            response_collisions = response_names & set(self.family.likelihood.params)
+            if response_collisions:
+                raise ValueError(
+                    "Response data names must not also be modeled likelihood parameters: "
+                    f"{sorted(response_collisions)}."
+                )
             reserved_nlpars = set(self.formula.nlpars) & set(self.family.likelihood.params)
             if reserved_nlpars:
                 raise ValueError(
@@ -326,7 +333,6 @@ class Model:
                     name,
                     expression,
                     data_names,
-                    expression_dependencies,
                     is_parent=name == parent_name,
                 )
                 nonlinear_parameters[name] = parameter

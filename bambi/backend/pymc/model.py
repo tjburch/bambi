@@ -20,7 +20,7 @@ from bambi.backend.pymc.nonlinear import build_new_nonlinear_data, build_nonline
 from bambi.backend.pymc.parameters import (
     build_conditional_parameter,
     build_marginal_parameter,
-    build_nonlinear_predictor,
+    build_nonlinear_coefficient,
     remove_group_specific_contributions,
 )
 from bambi.backend.pymc.parameters.conditional import (
@@ -42,7 +42,7 @@ from bambi.backend.pymc.terms.response import (
     replace_response_variables,
 )
 from bambi.config import config as bmb_config
-from bambi.nonlinear import NonlinearParameter, prepare_nonlinear_data
+from bambi.nonlinear import prepare_nonlinear_data
 from bambi.utils import as_dataset
 
 _logger = logging.getLogger("bambi")
@@ -94,7 +94,8 @@ class PyMCModel:
     def _nonlinear_predictor_names(self) -> tuple[str, ...]:
         """Return deterministic variables that should not be sampled directly."""
         predictor_names = tuple(
-            parameter.label for parameter in self.spec.nonlinear_predictors.values()
+            parameter.label
+            for parameter in self.spec.parameter_graph.nonlinear_coefficients.values()
         )
         intermediate_names = tuple(
             parameter.label
@@ -127,7 +128,7 @@ class PyMCModel:
             parameter_values[name] = marginal_parameters[name]
 
         for name, parameter in self.spec.conditional_parameters.items():
-            if isinstance(parameter, NonlinearParameter):
+            if parameter.is_nonlinear:
                 continue
             parameter_info = make_conditional_parameter_info(parameter)
             self._conditional_parameter_info[name] = parameter_info
@@ -137,10 +138,10 @@ class PyMCModel:
             parameter_values[name] = conditional_parameters[name]
 
         if self.spec.formula.nlpars:
-            for name, parameter in self.spec.nonlinear_predictors.items():
+            for name, parameter in self.spec.parameter_graph.nonlinear_coefficients.items():
                 parameter_info = make_conditional_parameter_info(parameter)
                 self._conditional_parameter_info[name] = parameter_info
-                parameter_values[name] = build_nonlinear_predictor(
+                parameter_values[name] = build_nonlinear_coefficient(
                     parameter_info, self._group_specific_state, model
                 )
 

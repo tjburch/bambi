@@ -58,7 +58,7 @@ def build_conditional_parameter(
     )
 
 
-def build_nonlinear_predictor(
+def build_nonlinear_coefficient(
     parameter_info: ConditionalParameterInfo,
     group_specific_state: GroupSpecificGraphState,
     model: pm.Model,

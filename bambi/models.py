@@ -26,7 +26,6 @@ from bambi.families.types import DimType
 from bambi.formula import Formula, check_ordinal_formula
 from bambi.nonlinear import (
     NonlinearExpression,
-    NonlinearParameter,
     ParameterDependencyGraph,
     SUPPORTED_FUNCTIONS,
     nonlinear_symbol_names,
@@ -150,7 +149,6 @@ class Model:
     ):
         # attributes that are set later
         self.parameters = {}
-        self._nonlinear_predictors = {}
         self.parameter_graph = ParameterDependencyGraph({}, {}, ())
         self.built = False  # build()
 
@@ -294,13 +292,18 @@ class Model:
 
         # Add parent parameter
         if self.formula.nlpars:
-            self._nonlinear_predictors = self._make_nonlinear_predictors(
+            nonlinear_coefficients = self._make_nonlinear_coefficients(
                 self.parameter_graph.nodes,
                 priors,
                 na_action,
                 additional_namespace,
             )
             for name, parameter in self.parameter_graph.nodes.items():
+                parameter.nonlinear_coefficients = {
+                    dependency: nonlinear_coefficients[dependency]
+                    for dependency in self.parameter_graph.dependencies[name]
+                    if dependency in nonlinear_coefficients
+                }
                 if name == parent_name:
                     self.parameters[name] = parameter
         else:
@@ -421,17 +424,20 @@ class Model:
         )
         order = parameter_dependency_order(dependencies, declaration_order)
         nodes = {
-            name: NonlinearParameter(
+            name: ConditionalParameter(
                 name,
-                expression,
-                metadata[name][1],
+                None,
+                {},
+                self,
                 is_parent=name == parent_name,
+                expression=expression,
+                data_names=metadata[name][1],
             )
             for name, expression in expressions.items()
         }
         return ParameterDependencyGraph(nodes, dependencies, order)
 
-    def _make_nonlinear_predictors(self, expressions, priors, na_action, additional_namespace):
+    def _make_nonlinear_coefficients(self, expressions, priors, na_action, additional_namespace):
         explicit_formulas = dict(zip(self.formula.additionals_lhs, self.formula.additionals))
         nonlinear_names = set(expressions)
         formulas = {
@@ -928,8 +934,9 @@ class Model:
                 if is_used is False:
                     missing_names.append(name)
         else:
+            expression_parameters = self.parameter_graph.nodes if self.parameter_graph else {}
             modeled_parameters = (
-                self.conditional_parameters | self.nonlinear_predictors | self.parameter_graph.nodes
+                self.conditional_parameters | self.nonlinear_predictors | expression_parameters
             )
             for parameter_name, parameter_aliases in aliases.items():
                 if parameter_name in self.marginal_parameters:
@@ -1581,38 +1588,34 @@ class Model:
 
         Returns
         -------
-        dict of str to ConditionalParameter or NonlinearParameter
-            Likelihood parameters keyed by their original names. Parameters defined by nonlinear
-            expressions are ``NonlinearParameter`` objects, which have no additive terms or design
-            matrices. Intermediate nonlinear parameters are excluded.
+        dict of str to ConditionalParameter
+            Likelihood parameters keyed by their original names. Intermediate nonlinear
+            quantities are excluded.
 
         See Also
         --------
         additive_parameters : Parameters with additive terms and design matrices, including
             nonlinear predictors.
         """
-        return {
-            k: v
-            for k, v in self.parameters.items()
-            if isinstance(v, (ConditionalParameter, NonlinearParameter))
-        }
+        return {k: v for k, v in self.parameters.items() if isinstance(v, ConditionalParameter)}
 
     @property
     def nonlinear_predictors(self):
-        """Return the additive predictors used in the nonlinear parent expression.
+        """Return a compatibility view of coefficients used in nonlinear expressions.
 
         Returns
         -------
         dict of str to ConditionalParameter
-            Predictors keyed by original formula names, regardless of aliases. Empty for
-            ordinary models. These predictors are separate from likelihood parameters.
+            Coefficients keyed by original formula names, regardless of aliases. Empty for
+            ordinary models. Each coefficient is canonically owned by the conditional parameter
+            whose expression uses it; this property combines those local mappings.
 
         Examples
         --------
         For ``Formula("y ~ a * x", nlpars=("a",))``, retrieve the predictor
         with ``model.nonlinear_predictors["a"]``.
         """
-        return self._nonlinear_predictors.copy()
+        return self.parameter_graph.nonlinear_coefficients.copy()
 
     @property
     def additive_parameters(self):
@@ -1633,7 +1636,7 @@ class Model:
         return {
             name: parameter
             for name, parameter in self.conditional_parameters.items()
-            if isinstance(parameter, ConditionalParameter)
+            if not parameter.is_nonlinear
         } | self.nonlinear_predictors
 
 

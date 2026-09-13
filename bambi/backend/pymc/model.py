@@ -106,10 +106,12 @@ class PyMCModel:
 
         marginal_parameters = {}
         conditional_parameters = {}
+        parameter_values = {}
         self._conditional_parameter_info = {}
         self._group_specific_state = GroupSpecificGraphState()
         for name, parameter in self.spec.marginal_parameters.items():
             marginal_parameters[name] = build_marginal_parameter(parameter, self.spec.family, model)
+            parameter_values[name] = marginal_parameters[name]
 
         for name, parameter in self.spec.conditional_parameters.items():
             if isinstance(parameter, NonlinearParameter):
@@ -119,25 +121,31 @@ class PyMCModel:
             conditional_parameters[name] = build_conditional_parameter(
                 parameter_info, self.spec.family, self._group_specific_state, model
             )
+            parameter_values[name] = conditional_parameters[name]
 
         if self.spec.formula.nlpars:
-            predictor_values = {}
             for name, parameter in self.spec.nonlinear_predictors.items():
                 parameter_info = make_conditional_parameter_info(parameter)
                 self._conditional_parameter_info[name] = parameter_info
-                predictor_values[name] = build_nonlinear_predictor(
+                parameter_values[name] = build_nonlinear_predictor(
                     parameter_info, self._group_specific_state, model
                 )
 
-            parent = self.spec.parameters[self.spec.family.likelihood.parent]
-            conditional_parameters[parent.name] = build_nonlinear_parameter(
-                parent,
-                predictor_values,
-                self.spec.data,
-                model,
-                self.spec.family,
-                marginal_parameters | conditional_parameters,
-            )
+            for name in self.spec.parameter_graph.order:
+                if name not in self.spec.parameter_graph.nodes:
+                    continue
+                parameter = self.spec.parameter_graph.nodes[name]
+                value = build_nonlinear_parameter(
+                    parameter,
+                    parameter_values,
+                    self.spec.data,
+                    model,
+                    self.spec.family,
+                    marginal_parameters | conditional_parameters,
+                )
+                parameter_values[name] = value
+                if name in self.spec.parameters:
+                    conditional_parameters[name] = value
 
         build_response_term(
             term=self.spec.response_term,
@@ -225,6 +233,11 @@ class PyMCModel:
             nonlinear_predictor_names = {
                 parameter.label for parameter in self.spec.nonlinear_predictors.values()
             }
+            nonlinear_predictor_names.update(
+                parameter.label
+                for name, parameter in self.spec.parameter_graph.nodes.items()
+                if name not in self.spec.parameters
+            )
             likelihood_parameter_names = {
                 parameter.label for parameter in self.spec.parameters.values()
             }
@@ -619,13 +632,16 @@ class PyMCModel:
 
     def _build_new_data(self, data: pd.DataFrame, purpose: str, kind: str | None = None):
         if self.spec.formula.nlpars:
-            parent = self.spec.parameters[self.spec.family.likelihood.parent]
             data = prepare_nonlinear_data(
                 self.spec.formula,
-                parent.expression,
+                {
+                    name: parameter.expression
+                    for name, parameter in self.spec.parameter_graph.nodes.items()
+                },
                 data,
                 dropna=False,
                 include_response=purpose == "log_likelihood",
+                parameter_names=self.spec.parameter_graph.dependencies,
             )
         new_coords = {"__obs__": range(len(data))}
         new_data = build_new_response_data(
@@ -647,8 +663,8 @@ class PyMCModel:
             factor_plans.extend(parameter_factor_plans)
 
         if self.spec.formula.nlpars:
-            parent = self.spec.parameters[self.spec.family.likelihood.parent]
-            new_data.update(build_new_nonlinear_data(parent, data))
+            for parameter in self.spec.parameter_graph.nodes.values():
+                new_data.update(build_new_nonlinear_data(parameter, data))
 
         return new_data, new_coords, factor_plans
 
@@ -676,6 +692,11 @@ class PyMCModel:
         nonlinear_predictor_names = [
             parameter.label for parameter in self.spec.nonlinear_predictors.values()
         ]
+        nonlinear_predictor_names.extend(
+            parameter.label
+            for name, parameter in self.spec.parameter_graph.nodes.items()
+            if name not in self.spec.parameters
+        )
         vars_to_sample = [var for var in vars_to_sample if var not in nonlinear_predictor_names]
 
         if not include_response_params:
@@ -811,6 +832,11 @@ class PyMCModel:
         nonlinear_predictor_names = [
             parameter.label for parameter in self.spec.nonlinear_predictors.values()
         ]
+        nonlinear_predictor_names.extend(
+            parameter.label
+            for name, parameter in self.spec.parameter_graph.nodes.items()
+            if name not in self.spec.parameters
+        )
         idata = _posterior_samples_to_idata(
             samples,
             self.model,

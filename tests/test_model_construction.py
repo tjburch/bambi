@@ -1372,6 +1372,109 @@ def test_predict_without_group_specific_effect_multivariate(
 
 
 @pytest.fixture
+def nonlinear_parameter_dag_model():
+    data = pd.DataFrame(
+        {
+            "distance": [0.0, 0.5, 1.0, 1.5],
+            "attempts": [20, 40, 80, 160],
+            "success_rate": [0.42, 0.38, 0.33, 0.29],
+        }
+    )
+    formula = bmb.Formula(
+        "success_rate ~ p_angle * p_distance",
+        "sigma ~ sqrt(mu * (1 - mu) / attempts + sigma_y ** 2)",
+        "p_distance ~ 1 + distance",
+        "sigma_y ~ 1",
+        nlpars=("p_angle", "p_distance", "sigma_y"),
+    )
+    model = bmb.Model(formula, data, center_predictors=False)
+    model.build()
+    return model
+
+
+@pytest.fixture
+def nonlinear_parameter_dag_draws():
+    return xr.Dataset(
+        {
+            "p_angle_Intercept": (("chain", "draw"), [[0.8, 0.7]]),
+            "p_distance_Intercept": (("chain", "draw"), [[0.55, 0.65]]),
+            "p_distance_distance": (("chain", "draw"), [[-0.08, -0.12]]),
+            "sigma_y_Intercept": (("chain", "draw"), [[0.03, 0.05]]),
+        }
+    )
+
+
+def golf_parameter_values(draws, data):
+    distance = xr.DataArray(data.distance.to_numpy(), dims="__obs__")
+    attempts = xr.DataArray(data.attempts.to_numpy(), dims="__obs__")
+    p_distance = draws.p_distance_Intercept + draws.p_distance_distance * distance
+    mu = draws.p_angle_Intercept * p_distance
+    sigma = np.sqrt(mu * (1 - mu) / attempts + draws.sigma_y_Intercept**2)
+    return mu, sigma
+
+
+def test_nonlinear_parameter_dag_matches_golf_calculation(
+    nonlinear_parameter_dag_model, nonlinear_parameter_dag_draws
+):
+    model = nonlinear_parameter_dag_model
+    with model.backend.model:
+        actual = pm.compute_deterministics(
+            nonlinear_parameter_dag_draws, var_names=["mu", "sigma"], progressbar=False
+        )
+    expected_mu, expected_sigma = golf_parameter_values(nonlinear_parameter_dag_draws, model.data)
+
+    np.testing.assert_allclose(actual.mu, expected_mu)
+    np.testing.assert_allclose(actual.sigma, expected_sigma)
+
+
+@pytest.mark.parametrize("out_of_sample", [False, True])
+def test_nonlinear_parameter_dag_prediction(
+    nonlinear_parameter_dag_model, nonlinear_parameter_dag_draws, out_of_sample
+):
+    model = nonlinear_parameter_dag_model
+    idata = xr.DataTree.from_dict({"posterior": nonlinear_parameter_dag_draws})
+    data = (
+        pd.DataFrame({"distance": [0.25, 1.25], "attempts": [30, 120]})
+        if out_of_sample
+        else model.data
+    )
+
+    result = model.predict(idata, data=data if out_of_sample else None, inplace=False)
+    group = result.predictions if out_of_sample else result.posterior
+    expected_mu, expected_sigma = golf_parameter_values(nonlinear_parameter_dag_draws, data)
+
+    np.testing.assert_allclose(group.mu, expected_mu)
+    np.testing.assert_allclose(group.sigma, expected_sigma)
+
+
+@pytest.mark.parametrize("out_of_sample", [False, True])
+def test_nonlinear_parameter_dag_log_likelihood(
+    nonlinear_parameter_dag_model, nonlinear_parameter_dag_draws, out_of_sample
+):
+    model = nonlinear_parameter_dag_model
+    idata = xr.DataTree.from_dict({"posterior": nonlinear_parameter_dag_draws})
+    data = (
+        pd.DataFrame(
+            {
+                "distance": [0.25, 1.25],
+                "attempts": [30, 120],
+                "success_rate": [0.39, 0.30],
+            }
+        )
+        if out_of_sample
+        else model.data
+    )
+
+    result = model.compute_log_likelihood(
+        idata, data=data if out_of_sample else None, inplace=False
+    )
+    mu, sigma = golf_parameter_values(nonlinear_parameter_dag_draws, data)
+    expected = norm.logpdf(data.success_rate.to_numpy(), loc=mu, scale=sigma)
+
+    np.testing.assert_allclose(result.log_likelihood.success_rate, expected)
+
+
+@pytest.fixture
 def nonlinear_exponential_model():
     data = pd.DataFrame(
         {"x": [0.0, 0.5, 1.5, 3.0], "z": [-1.0, 0.0, 0.5, 2.0], "y": [2.0, 1.5, 1.0, 0.8]}

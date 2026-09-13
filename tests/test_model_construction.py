@@ -15,6 +15,7 @@ from scipy.special import expit, ndtr  # pylint: disable=no-name-in-module
 from scipy.stats import norm
 
 from bambi.backend.pymc.transform import transforms_registry
+from bambi.parameters import ConditionalParameter, MarginalParameter
 from bambi.terms import CommonTerm, GroupSpecificTerm
 from bambi.backend.pymc.parameters import remove_group_specific_contributions
 from bambi.backend.pymc.terms.response import _untruncate_response
@@ -1369,6 +1370,58 @@ def test_predict_without_group_specific_effect_multivariate(
 
 
 # Nonlinear backend construction
+
+
+def test_nonlinear_coefficients_are_owned_by_expression_parameters():
+    data = pd.DataFrame({"y": [0.2, 0.3, 0.4], "x": [1.0, 2.0, 3.0]})
+    formula = bmb.Formula("y ~ a * x", "sigma ~ sqrt(a ** 2 + 0.1)", nlpars=("a",))
+
+    model = bmb.Model(formula, data)
+
+    mu = model.parameters["mu"]
+    sigma = model.parameters["sigma"]
+    assert isinstance(mu, ConditionalParameter)
+    assert isinstance(sigma, ConditionalParameter)
+    assert mu.is_nonlinear
+    assert sigma.is_nonlinear
+    assert model.parameter_graph.nodes["mu"] is mu
+    assert model.parameter_graph.nodes["sigma"] is sigma
+    assert set(mu.nonlinear_coefficients) == {"a"}
+    assert set(sigma.nonlinear_coefficients) == {"a"}
+    assert mu.nonlinear_coefficients["a"] is sigma.nonlinear_coefficients["a"]
+    assert model.nonlinear_predictors["a"] is mu.nonlinear_coefficients["a"]
+    assert not hasattr(model, "_nonlinear_predictors")
+
+
+def test_intermediate_expression_owns_its_direct_coefficients():
+    data = pd.DataFrame({"y": [0.2, 0.3, 0.4], "x": [1.0, 2.0, 3.0], "z": [0.0, 0.5, 1.0]})
+    formula = bmb.Formula(
+        "y ~ eta * x",
+        "eta ~ a + b * z",
+        nlpars=("eta", "b", "a"),
+    )
+
+    model = bmb.Model(formula, data)
+
+    mu = model.parameters["mu"]
+    eta = model.parameter_graph.nodes["eta"]
+    assert eta not in model.parameters.values()
+    assert not mu.nonlinear_coefficients
+    assert set(eta.nonlinear_coefficients) == {"a", "b"}
+    assert set(model.nonlinear_predictors) == {"a", "b"}
+    assert model.parameter_graph.order.index("eta") < model.parameter_graph.order.index("mu")
+
+
+def test_additive_and_marginal_likelihood_parameters_keep_their_roles():
+    data = pd.DataFrame({"y": [0.2, 0.3, 0.4], "x": [1.0, 2.0, 3.0], "z": [0.0, 0.5, 1.0]})
+    conditional = bmb.Model(bmb.Formula("y ~ a * x", "sigma ~ z", nlpars=("a",)), data)
+    marginal = bmb.Model(bmb.Formula("y ~ a * x", nlpars=("a",)), data)
+
+    sigma = conditional.parameters["sigma"]
+    assert isinstance(sigma, ConditionalParameter)
+    assert not sigma.is_nonlinear
+    assert set(sigma.terms) == {"Intercept", "z"}
+    assert isinstance(marginal.parameters["sigma"], MarginalParameter)
 
 
 def test_one_edge_parameter_dependency_matches_direct_calculation():

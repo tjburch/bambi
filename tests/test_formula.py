@@ -83,6 +83,13 @@ def test_nonlinear_keyword_is_not_supported():
         bmb.Formula("y ~ a", nonlinear=True)
 
 
-def test_nonlinear_formula_rejects_duplicate_parameter_formulas():
+@pytest.mark.parametrize(
+    "additionals",
+    [
+        ("a ~ 1", "a ~ x"),
+        ("sigma ~ z", "sigma ~ 1"),
+    ],
+)
+def test_nonlinear_formula_rejects_duplicate_parameter_formulas(additionals):
     with pytest.raises(ValueError, match="Duplicate parameter formula"):
-        bmb.Formula("y ~ a", "a ~ 1", "a ~ x", nlpars=("a",))
+        bmb.Formula("y ~ a", *additionals, nlpars=("a",))

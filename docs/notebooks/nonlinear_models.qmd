@@ -67,11 +67,80 @@ The main right-hand side is an arithmetic expression with no implicit intercept.
 
 Names used in the main expression must be valid Python identifiers. Backtick-quoted column names are not supported there. Rename columns containing spaces or dots before using them in an expression, for example from `time.days` to `time_days`. Additional parameter formulas retain ordinary Formulae syntax, including backtick-quoted column names.
 
-The implementation currently supports one univariate response and one nonlinear expression for a scalar parent parameter. Responses encoded as multiple columns, including Binomial count/trial pairs and censored, truncated, or weighted responses, are not supported. Nonlinear parameters must be declared in `nlpars` and cannot depend on one another. `nlpars` accepts a list or tuple, and its order controls predictor construction and display. Supported operations are `+`, `-`, `*`, `/`, `**`, `exp`, `log`, and `sqrt`. Explicit, scientifically meaningful priors are strongly recommended because nonlinear models can be weakly identified.
+The implementation currently supports one univariate response and one nonlinear expression for a scalar parent parameter. Binomial and Beta-Binomial count/trial responses written with `prop(successes, trials)` are also supported. Other responses encoded as multiple columns, including censored, truncated, weighted, or multiple responses, are not supported. Nonlinear parameters must be declared in `nlpars` and cannot depend on one another. `nlpars` accepts a list or tuple, and its order controls predictor construction and display.
+
+Expressions support the arithmetic operations `+`, `-`, `*`, `/`, and `**`, together with these functions:
+
+| Family | Functions |
+|---|---|
+| Basic | `exp`, `log`, `sqrt` |
+| Trigonometric | `sin`, `cos`, `tan` |
+| Inverse trigonometric | `asin`, `acos`, `atan`, `atan2` |
+| Hyperbolic | `sinh`, `cosh`, `tanh` |
+| Inverse hyperbolic | `asinh`, `acosh`, `atanh` |
+| Probability | `normal_cdf` |
+
+The `arc` spellings `arcsin`, `arccos`, `arctan`, `arctan2`, `arcsinh`, `arccosh`, and `arctanh` are aliases for their shorter counterparts. Angles are measured in radians. Inputs must satisfy the mathematical domain of the function; for example, the input to `asin` must be between -1 and 1. Explicit, scientifically meaningful priors are strongly recommended because nonlinear models can be weakly identified.
 
 Nonlinear predictor coefficients do not receive response-based automatic prior scaling, even when `auto_scale=True`, further reason to set priors on the scale of each scientific parameter. Automatic scaling still applies to marginal likelihood parameters such as Gaussian `sigma`.
 
 By default, missing values in the response, parameter formulas, or expression inputs raise an error. With `dropna=True`, Bambi removes incomplete rows once across all these inputs, so every part of the model uses the same observations. Missing values in unused columns do not remove rows. The retained rows are available in `model.data`. Prediction data must be complete; prediction does not drop rows, even if the model was fitted with `dropna=True`.
+
+## Golf putting from first principles
+
+Gelman's golf putting example models successful putts using the geometry of a ball rolling toward a hole. A ball of radius $r$ struck from distance $x$ enters a hole of radius $R$ when its angular error is smaller than $\sin^{-1}((R-r)/x)$. If angular error is normally distributed with standard deviation $\sigma$, the probability of success is
+
+$$
+p(x) = 2\Phi\left(\frac{\sin^{-1}((R-r)/x)}{\sigma}\right) - 1,
+$$
+
+where $\Phi$ is the standard normal cumulative distribution function. The data below are the aggregated putting data used in the [Stan case study](https://mc-stan.org/learn-stan/case-studies/golf.html).
+
+```python
+golf = pd.read_csv("data/golf.csv")
+golf["ball_radius"] = (1.68 / 2) / 12
+golf["hole_radius"] = (4.25 / 2) / 12
+
+golf_formula = bmb.Formula(
+    "prop(successes, attempts) ~ "
+    "2 * normal_cdf("
+    "asin((hole_radius - ball_radius) / distance) / sigma_angle"
+    ") - 1",
+    nlpars=("sigma_angle",),
+)
+
+golf_model = bmb.Model(
+    golf_formula,
+    golf,
+    family="binomial",
+    link="identity",
+    priors={
+        "sigma_angle": {
+            "Intercept": bmb.Prior("HalfNormal", sigma=0.5),
+        }
+    },
+)
+golf_idata = golf_model.fit(random_seed=123)
+```
+
+The expression already returns a probability, so the Binomial parent uses the identity link. The half-normal prior keeps `sigma_angle` positive, as required for a standard deviation. Its posterior is in radians and can be converted to degrees:
+
+```python
+sigma_degrees = np.rad2deg(golf_idata.posterior["sigma_angle_Intercept"])
+float(sigma_degrees.mean())
+```
+
+Since `distance` appears directly in the nonlinear expression, it is also available to `interpret`:
+
+```python
+from bambi import interpret
+
+interpret.plot_predictions(
+    golf_model,
+    golf_idata,
+    conditional={"distance": np.arange(2, 21)},
+)
+```
 
 ## Auxiliary formulas
 

@@ -9,6 +9,7 @@ from bambi.backend.pymc.utils import INVERSE_LINKS
 from bambi.families import Family
 from bambi.nonlinear import (
     BinaryOperation,
+    FUNCTION_ALIASES,
     FunctionCall,
     Literal,
     NonlinearParameter,
@@ -25,7 +26,17 @@ _BINARY_OPERATORS = {
     "**": operator.pow,
 }
 
-_FUNCTIONS = {name: getattr(pt, name) for name in SUPPORTED_FUNCTIONS}
+_FUNCTIONS = {
+    name: getattr(pt, FUNCTION_ALIASES.get(name, name))
+    for name in SUPPORTED_FUNCTIONS - {"normal_cdf"}
+}
+
+
+def _normal_cdf(value):
+    return 0.5 + 0.5 * pt.erf(value / pt.sqrt(2))
+
+
+_FUNCTIONS["normal_cdf"] = _normal_cdf
 
 
 def nonlinear_data_name(parameter_label: str, symbol: str) -> str:
@@ -150,5 +161,6 @@ def evaluate_expression(node, values):
         right = evaluate_expression(node.right, values)
         return _BINARY_OPERATORS[node.operator](left, right)
     if isinstance(node, FunctionCall):
-        return _FUNCTIONS[node.function](evaluate_expression(node.argument, values))
+        arguments = [evaluate_expression(argument, values) for argument in node.arguments]
+        return _FUNCTIONS[node.function](*arguments)
     raise TypeError(f"Unexpected nonlinear expression node: {type(node).__name__}.")

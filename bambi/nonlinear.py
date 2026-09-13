@@ -30,6 +30,7 @@ FUNCTION_ARITIES = {
     "arctan2": 2,
     "log1p": 1,
     "expm1": 1,
+    "softplus": 1,
     "erf": 1,
     "erfc": 1,
     "logit": 1,
@@ -39,6 +40,8 @@ FUNCTION_ARITIES = {
     "norm_cdf": 1,
     "normal_ppf": 1,
     "norm_ppf": 1,
+    "probit": 1,
+    "invprobit": 1,
     "cloglog": 1,
     "invcloglog": 1,
 }

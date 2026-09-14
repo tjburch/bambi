@@ -91,7 +91,7 @@ class PyMCModel:
         self._group_specific_state: GroupSpecificGraphState = GroupSpecificGraphState()
 
     @property
-    def _nonlinear_predictor_names(self) -> tuple[str, ...]:
+    def _intermediate_nonlinear_parameter_names(self) -> tuple[str, ...]:
         """Return deterministic variables that should not be sampled directly."""
         predictor_names = tuple(
             parameter.label
@@ -244,7 +244,7 @@ class PyMCModel:
         if prior_only:
             unobserved_rvs_names = []
             flat_rvs = []
-            nonlinear_predictor_names = self._nonlinear_predictor_names
+            intermediate_nonlinear_parameter_names = self._intermediate_nonlinear_parameter_names
             likelihood_parameter_names = {
                 parameter.label for parameter in self.spec.parameters.values()
             }
@@ -255,7 +255,8 @@ class PyMCModel:
                     is_likelihood_param = unobserved.name in likelihood_parameter_names
                     is_deterministic = unobserved in self.model.deterministics
                     if is_deterministic and (
-                        is_likelihood_param or unobserved.name in nonlinear_predictor_names
+                        is_likelihood_param
+                        or unobserved.name in intermediate_nonlinear_parameter_names
                     ):
                         continue
                     unobserved_rvs_names.append(unobserved.name)
@@ -701,8 +702,10 @@ class PyMCModel:
         )
         vars_to_sample = [variable.name for variable in vars_to_sample]
 
-        nonlinear_predictor_names = self._nonlinear_predictor_names
-        vars_to_sample = [var for var in vars_to_sample if var not in nonlinear_predictor_names]
+        intermediate_nonlinear_parameter_names = self._intermediate_nonlinear_parameter_names
+        vars_to_sample = [
+            var for var in vars_to_sample if var not in intermediate_nonlinear_parameter_names
+        ]
 
         if not include_response_params:
             response_parameter_names = [
@@ -834,11 +837,12 @@ class PyMCModel:
         response_parameter_names = [
             parameter.label for parameter in self.spec.conditional_parameters.values()
         ]
-        nonlinear_predictor_names = self._nonlinear_predictor_names
+        intermediate_nonlinear_parameter_names = self._intermediate_nonlinear_parameter_names
         idata = _posterior_samples_to_idata(
             samples,
             self.model,
-            excluded_var_names=response_parameter_names + list(nonlinear_predictor_names),
+            excluded_var_names=response_parameter_names
+            + list(intermediate_nonlinear_parameter_names),
         )
 
         if include_response_params:

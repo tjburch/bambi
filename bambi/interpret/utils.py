@@ -188,7 +188,12 @@ def get_model_terms(model: Model) -> dict:
         A dictionary containing all terms from the model's conditional parameters.
     """
     terms = {}
-    for parameter in model.additive_parameters.values():
+    parameters_with_terms = [
+        parameter
+        for parameter in model.conditional_parameters.values()
+        if not parameter.is_nonlinear
+    ] + list(model.parameter_graph.nonlinear_coefficients.values())
+    for parameter in parameters_with_terms:
         if parameter.design.common:
             terms.update(parameter.design.common.terms)
 

@@ -1389,8 +1389,9 @@ def test_nonlinear_coefficients_are_owned_by_expression_parameters():
     assert set(mu.nonlinear_coefficients) == {"a"}
     assert set(sigma.nonlinear_coefficients) == {"a"}
     assert mu.nonlinear_coefficients["a"] is sigma.nonlinear_coefficients["a"]
-    assert model.nonlinear_predictors["a"] is mu.nonlinear_coefficients["a"]
     assert not hasattr(model, "_nonlinear_predictors")
+    assert not hasattr(model, "nonlinear_predictors")
+    assert not hasattr(model, "additive_parameters")
 
 
 def test_intermediate_expression_owns_its_direct_coefficients():
@@ -1408,7 +1409,6 @@ def test_intermediate_expression_owns_its_direct_coefficients():
     assert eta not in model.parameters.values()
     assert not mu.nonlinear_coefficients
     assert set(eta.nonlinear_coefficients) == {"a", "b"}
-    assert set(model.nonlinear_predictors) == {"a", "b"}
     assert model.parameter_graph.order.index("eta") < model.parameter_graph.order.index("mu")
 
 

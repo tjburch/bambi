@@ -364,7 +364,9 @@ class Model:
 
         # Validate per-parameter noncentered dict, now that all parameters are known.
         if isinstance(self.noncentered, dict):
-            valid_parameters = set(self.parameters) | set(self.nonlinear_predictors)
+            valid_parameters = set(self.parameters) | set(
+                self.parameter_graph.nonlinear_coefficients
+            )
             unknown = set(self.noncentered) - valid_parameters
             if unknown:
                 raise ValueError(
@@ -662,7 +664,12 @@ class Model:
         self._set_priors(**self._added_priors)
 
         # Prepare all priors
-        for parameter in self.additive_parameters.values():
+        parameters_with_terms = {
+            name: parameter
+            for name, parameter in self.conditional_parameters.items()
+            if not parameter.is_nonlinear
+        } | self.parameter_graph.nonlinear_coefficients
+        for parameter in parameters_with_terms.values():
             parameter.build_priors()
 
         for name, parameter in self.marginal_parameters.items():
@@ -689,17 +696,22 @@ class Model:
             return
 
         if self.formula.nlpars:
-            valid = set(self.marginal_parameters) | set(self.additive_parameters)
+            parameters_with_terms = {
+                name: parameter
+                for name, parameter in self.conditional_parameters.items()
+                if not parameter.is_nonlinear
+            } | self.parameter_graph.nonlinear_coefficients
+            valid = set(self.marginal_parameters) | set(parameters_with_terms)
             unused = []
             for name, value in priors.items():
                 if name not in valid:
                     unused.append(name)
-                elif name in self.additive_parameters:
+                elif name in parameters_with_terms:
                     if not isinstance(value, dict):
                         raise ValueError(
                             f"Priors for conditional parameter '{name}' must be a dictionary."
                         )
-                    nested_valid = set(self.additive_parameters[name].terms) | {
+                    nested_valid = set(parameters_with_terms[name].terms) | {
                         "common",
                         "group_specific",
                     }
@@ -752,7 +764,12 @@ class Model:
                 )
             if priors is not None:
                 normalized_priors = deepcopy(priors)
-                for name, parameter in self.additive_parameters.items():
+                parameters_with_terms = {
+                    name: parameter
+                    for name, parameter in self.conditional_parameters.items()
+                    if not parameter.is_nonlinear
+                } | self.parameter_graph.nonlinear_coefficients
+                for name, parameter in parameters_with_terms.items():
                     if name in normalized_priors:
                         parameter.update_priors(normalized_priors[name])
                 for name, parameter in self.marginal_parameters.items():
@@ -936,7 +953,9 @@ class Model:
         else:
             expression_parameters = self.parameter_graph.nodes if self.parameter_graph else {}
             modeled_parameters = (
-                self.conditional_parameters | self.nonlinear_predictors | expression_parameters
+                self.conditional_parameters
+                | self.parameter_graph.nonlinear_coefficients
+                | expression_parameters
             )
             for parameter_name, parameter_aliases in aliases.items():
                 if parameter_name in self.marginal_parameters:
@@ -1500,9 +1519,14 @@ class Model:
 
         # Build priors section. Make sure the parent parameter goes first.
         if self.formula.nlpars:
+            parameters_with_terms = {
+                name: parameter
+                for name, parameter in self.conditional_parameters.items()
+                if not parameter.is_nonlinear
+            } | self.parameter_graph.nonlinear_coefficients
             priors_dict = {
                 parameter.label: make_priors_summary(parameter)
-                for parameter in self.additive_parameters.values()
+                for parameter in parameters_with_terms.values()
             }
         else:
             priors_dict = {parent_name: make_priors_summary(parent_parameter)}
@@ -1591,53 +1615,8 @@ class Model:
         dict of str to ConditionalParameter
             Likelihood parameters keyed by their original names. Intermediate nonlinear
             quantities are excluded.
-
-        See Also
-        --------
-        additive_parameters : Parameters with additive terms and design matrices, including
-            nonlinear predictors.
         """
         return {k: v for k, v in self.parameters.items() if isinstance(v, ConditionalParameter)}
-
-    @property
-    def nonlinear_predictors(self):
-        """Return a compatibility view of coefficients used in nonlinear expressions.
-
-        Returns
-        -------
-        dict of str to ConditionalParameter
-            Coefficients keyed by original formula names, regardless of aliases. Empty for
-            ordinary models. Each coefficient is canonically owned by the conditional parameter
-            whose expression uses it; this property combines those local mappings.
-
-        Examples
-        --------
-        For ``Formula("y ~ a * x", nlpars=("a",))``, retrieve the predictor
-        with ``model.nonlinear_predictors["a"]``.
-        """
-        return self.parameter_graph.nonlinear_coefficients.copy()
-
-    @property
-    def additive_parameters(self):
-        """Return all parameters constructed from ordinary additive formulas.
-
-        Returns
-        -------
-        dict of str to ConditionalParameter
-            Conditional likelihood parameters and nonlinear predictors, keyed by original
-            formula names. Excludes the composed nonlinear parent and marginal parameters.
-
-        Examples
-        --------
-        For a nonlinear Gaussian model with ``a ~ 1`` and ``sigma ~ x``, this mapping
-        contains ``"a"`` and ``"sigma"``; ``model.parameters`` contains ``"mu"`` and
-        ``"sigma"``.
-        """
-        return {
-            name: parameter
-            for name, parameter in self.conditional_parameters.items()
-            if not parameter.is_nonlinear
-        } | self.nonlinear_predictors
 
 
 def with_categorical_cols(data: pd.DataFrame, columns) -> pd.DataFrame:

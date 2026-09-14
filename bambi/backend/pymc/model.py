@@ -285,9 +285,14 @@ class PyMCModel:
             ]
 
         if omit_group_specific:
+            parameters_with_terms = [
+                parameter
+                for parameter in self.spec.conditional_parameters.values()
+                if not parameter.is_nonlinear
+            ] + list(self.spec.parameter_graph.nonlinear_coefficients.values())
             group_specific_var_names = [
                 term.label
-                for parameter in self.spec.additive_parameters.values()
+                for parameter in parameters_with_terms
                 for term in parameter.group_specific_terms.values()
             ]
             var_names = [name for name in var_names if name not in group_specific_var_names]

@@ -265,8 +265,15 @@ class Model:
 
         # Add response
         self.response_term = ResponseTerm(design.response)
-        if self.formula.nlpars and self.response_term.data.ndim != 1:
-            raise ValueError("Nonlinear formulas currently require one observed response.")
+        if (
+            self.formula.nlpars
+            and self.response_term.data.ndim != 1
+            and not self.response_term.is_binomial
+        ):
+            raise ValueError(
+                "Nonlinear formulas currently require one observed response or a proportion "
+                "response."
+            )
         self._response_component = _ResponseComponentAdapter(
             self.response_term, design.response, self
         )

@@ -26,23 +26,6 @@ _BINARY_OPERATORS = {
     "**": operator.pow,
 }
 
-_FUNCTIONS = {
-    name: getattr(pt, FUNCTION_ALIASES.get(name, name))
-    for name in SUPPORTED_FUNCTIONS
-    - {
-        "logit",
-        "normal_cdf",
-        "norm_cdf",
-        "normal_ppf",
-        "norm_ppf",
-        "probit",
-        "invprobit",
-        "cloglog",
-        "invcloglog",
-    }
-}
-
-
 def _logit(value):
     return pt.log(value) - pt.log1p(-value)
 
@@ -63,19 +46,24 @@ def _invcloglog(value):
     return -pt.expm1(-pt.exp(value))
 
 
-_FUNCTIONS.update(
-    {
-        "logit": _logit,
-        "normal_cdf": _normal_cdf,
-        "norm_cdf": _normal_cdf,
-        "normal_ppf": _normal_ppf,
-        "norm_ppf": _normal_ppf,
-        "probit": _normal_ppf,
-        "invprobit": _normal_cdf,
-        "cloglog": _cloglog,
-        "invcloglog": _invcloglog,
-    }
-)
+_CUSTOM_FUNCTIONS = {
+    "logit": _logit,
+    "normal_cdf": _normal_cdf,
+    "norm_cdf": _normal_cdf,
+    "normal_ppf": _normal_ppf,
+    "norm_ppf": _normal_ppf,
+    "probit": _normal_ppf,
+    "invprobit": _normal_cdf,
+    "cloglog": _cloglog,
+    "invcloglog": _invcloglog,
+}
+
+_FUNCTIONS = {
+    name: getattr(pt, FUNCTION_ALIASES.get(name, name))
+    for name in SUPPORTED_FUNCTIONS
+    if name not in _CUSTOM_FUNCTIONS
+}
+_FUNCTIONS.update(_CUSTOM_FUNCTIONS)
 
 
 def nonlinear_data_name(parameter_label: str, symbol: str) -> str:

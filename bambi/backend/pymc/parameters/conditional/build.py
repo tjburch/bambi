@@ -63,6 +63,22 @@ def build_nonlinear_coefficient(
     group_specific_state: GroupSpecificGraphState,
     model: pm.Model,
 ) -> pt.Variable:
+    """Build an additive coefficient used by a nonlinear expression.
+
+    Parameters
+    ----------
+    parameter_info : ConditionalParameterInfo
+        Description of the coefficient and its terms.
+    group_specific_state : GroupSpecificGraphState
+        State shared by group-specific coefficient terms.
+    model : pymc.Model
+        PyMC model that owns the coefficient.
+
+    Returns
+    -------
+    pytensor.tensor.variable.TensorVariable
+        Coefficient value on the identity-link scale.
+    """
     param_spec = ParamSpec(links=["identity"])
     return build_additive_parameter(
         parameter_info,

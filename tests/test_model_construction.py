@@ -2014,7 +2014,7 @@ def test_invalid_family_link_remains_rejected():
         )
 
 
-def test_bare_nonlinear_predictor_broadcasts_without_data_columns():
+def test_bare_nonlinear_coefficient_broadcasts_without_data_columns():
     model = bmb.Model(
         bmb.Formula("y ~ a", nlpars=("a",)),
         pd.DataFrame({"y": [0, 1]}),

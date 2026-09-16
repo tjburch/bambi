@@ -92,8 +92,8 @@ class PyMCModel:
 
     @property
     def _intermediate_nonlinear_parameter_names(self) -> tuple[str, ...]:
-        """Return deterministic variables that should not be sampled directly."""
-        predictor_names = tuple(
+        """Return nonlinear quantities that should not be sampled directly."""
+        coefficient_names = tuple(
             parameter.label
             for parameter in self.spec.parameter_graph.nonlinear_coefficients.values()
         )
@@ -102,7 +102,7 @@ class PyMCModel:
             for name, parameter in self.spec.parameter_graph.nodes.items()
             if name not in self.spec.parameters
         )
-        return predictor_names + intermediate_names
+        return coefficient_names + intermediate_names
 
     def build(self) -> None:
         response_coords_data, response_coords, response_coords_reduced = coords_from_response(

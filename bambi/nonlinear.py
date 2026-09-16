@@ -196,7 +196,18 @@ class ParameterDependencyGraph:
 
     @property
     def nonlinear_coefficients(self):
-        """Return the canonical coefficients owned by the graph's parameter nodes."""
+        """Return the canonical coefficients owned by the graph's parameter nodes.
+
+        Returns
+        -------
+        dict of str to ConditionalParameter
+            Coefficients keyed by their original names.
+
+        Raises
+        ------
+        ValueError
+            If multiple parameter nodes define different coefficients with the same name.
+        """
         coefficients = {}
         for parameter in self.nodes.values():
             for name, coefficient in parameter.nonlinear_coefficients.items():

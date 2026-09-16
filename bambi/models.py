@@ -83,7 +83,7 @@ class Model:
         Bare term priors can be combined with priors nested under the parent component. If both
         specify the same term, the nested parent prior takes precedence.
         For nonlinear models, each nonlinear parameter name maps to its own term-prior dictionary.
-        Nonlinear predictor priors are not scaled using the response.
+        Nonlinear coefficient priors are not scaled using the response.
         Explicit priors are recommended.
     link : str or dict of str to str, optional
         The name of the link function to use. Valid names are `"cloglog"`, `"identity"`,
@@ -456,7 +456,7 @@ class Model:
                 f"{sorted(function_names)}."
             )
 
-        predictors = {}
+        coefficients = {}
         for name, formula in formulas.items():
             design = fm.design_matrices(
                 clean_formula_lhs(formula),
@@ -468,10 +468,10 @@ class Model:
             parameter_priors = priors.get(name, {})
             if not isinstance(parameter_priors, dict):
                 raise ValueError(f"Priors for nonlinear parameter '{name}' must be a dictionary.")
-            predictors[name] = ConditionalParameter(
+            coefficients[name] = ConditionalParameter(
                 name, design, parameter_priors, self, is_parent=False
             )
-        return predictors
+        return coefficients
 
     def fit(
         self,
@@ -889,7 +889,7 @@ class Model:
             dictionaries keyed by modeled parameter names. Inside each dictionary, map term names
             or the parameter's own name to strings. Response and marginal parameter aliases use
             strings directly. For example, ``{"a": {"a": "baseline", "Intercept": "a0"},
-            "mu": {"mu": "mean"}, "y": "response"}`` aliases a nonlinear predictor, its
+            "mu": {"mu": "mean"}, "y": "response"}`` aliases a nonlinear coefficient, its
             intercept, the parent, and the response. Formulas and prior dictionaries continue to
             use original names. The model must be rebuilt after setting aliases.
 

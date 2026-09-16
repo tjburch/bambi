@@ -660,7 +660,7 @@ def test_dependency_check_ignores_string_literals():
     assert_ip_dlogp(model)
 
 
-def test_nonlinear_predictor_can_depend_on_another_predictor():
+def test_nonlinear_coefficient_can_depend_on_another_coefficient():
     formula = bmb.Formula("y ~ a + b * x", "a ~ 1 + b", nlpars=("a", "b"))
     model = bmb.Model(formula, linear_data())
     model.build()

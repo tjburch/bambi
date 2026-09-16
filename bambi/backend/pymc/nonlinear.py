@@ -26,23 +26,6 @@ _BINARY_OPERATORS = {
     "**": operator.pow,
 }
 
-_FUNCTIONS = {
-    name: getattr(pt, FUNCTION_ALIASES.get(name, name))
-    for name in SUPPORTED_FUNCTIONS
-    - {
-        "logit",
-        "normal_cdf",
-        "norm_cdf",
-        "normal_ppf",
-        "norm_ppf",
-        "probit",
-        "invprobit",
-        "cloglog",
-        "invcloglog",
-    }
-}
-
-
 def _logit(value):
     return pt.log(value) - pt.log1p(-value)
 
@@ -63,19 +46,24 @@ def _invcloglog(value):
     return -pt.expm1(-pt.exp(value))
 
 
-_FUNCTIONS.update(
-    {
-        "logit": _logit,
-        "normal_cdf": _normal_cdf,
-        "norm_cdf": _normal_cdf,
-        "normal_ppf": _normal_ppf,
-        "norm_ppf": _normal_ppf,
-        "probit": _normal_ppf,
-        "invprobit": _normal_cdf,
-        "cloglog": _cloglog,
-        "invcloglog": _invcloglog,
-    }
-)
+_CUSTOM_FUNCTIONS = {
+    "logit": _logit,
+    "normal_cdf": _normal_cdf,
+    "norm_cdf": _normal_cdf,
+    "normal_ppf": _normal_ppf,
+    "norm_ppf": _normal_ppf,
+    "probit": _normal_ppf,
+    "invprobit": _normal_cdf,
+    "cloglog": _cloglog,
+    "invcloglog": _invcloglog,
+}
+
+_FUNCTIONS = {
+    name: getattr(pt, FUNCTION_ALIASES.get(name, name))
+    for name in SUPPORTED_FUNCTIONS
+    if name not in _CUSTOM_FUNCTIONS
+}
+_FUNCTIONS.update(_CUSTOM_FUNCTIONS)
 
 
 def nonlinear_data_name(parameter_label: str, symbol: str) -> str:
@@ -85,7 +73,7 @@ def nonlinear_data_name(parameter_label: str, symbol: str) -> str:
 
 def build_nonlinear_parameter(
     parameter: NonlinearParameter,
-    predictor_values: dict[str, pt.Variable],
+    parameter_values: dict[str, pt.Variable],
     data,
     model: pm.Model,
     family: Family,
@@ -97,8 +85,8 @@ def build_nonlinear_parameter(
     ----------
     parameter : NonlinearParameter
         Frontend description of the nonlinear parent.
-    predictor_values : dict of str to TensorVariable
-        Built additive predictors keyed by their original names.
+    parameter_values : dict of str to TensorVariable
+        Already-built additive and nonlinear parameters keyed by their original names.
     data : pandas.DataFrame
         Observed data containing the expression inputs.
     model : pymc.Model
@@ -113,7 +101,7 @@ def build_nonlinear_parameter(
     TensorVariable
         Deterministic parent parameter on the response scale.
     """
-    values = predictor_values.copy()
+    values = parameter_values.copy()
     for name in parameter.data_names:
         values[name] = pm.Data(
             nonlinear_data_name(parameter.label, name),
@@ -123,13 +111,14 @@ def build_nonlinear_parameter(
         )
 
     value = evaluate_expression(parameter.expression.root, values)
-    link = family.link[parameter.name]
-    inverse_link = INVERSE_LINKS.get(link.name, link.inverse_link)
-    transform_predictor = transforms_registry.get_predictor_transform(family, parameter.name)
-    if transform_predictor:
-        value = transform_predictor(value, parameters, inverse_link)
-    else:
-        value = inverse_link(value)
+    if parameter.is_parent:
+        link = family.link[parameter.name]
+        inverse_link = INVERSE_LINKS.get(link.name, link.inverse_link)
+        transform_predictor = transforms_registry.get_predictor_transform(family, parameter.name)
+        if transform_predictor:
+            value = transform_predictor(value, parameters, inverse_link)
+        else:
+            value = inverse_link(value)
     value = pt.as_tensor_variable(value)
     if any(value is variable for variable in model.deterministics):
         # Keep the parent distinct when PyMC clones direct deterministic views.

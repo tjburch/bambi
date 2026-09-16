@@ -151,22 +151,42 @@ class NonlinearExpression:
         return cls(source=source, root=root, symbols=frozenset(symbols))
 
 
+def nonlinear_symbol_names(source: str) -> frozenset[str]:
+    """Return variable names from an expression without validating its operations."""
+    source = source.strip()
+    try:
+        parsed = ast.parse(source, mode="eval")
+    except SyntaxError as error:
+        raise ValueError(f"Malformed nonlinear expression: {source!r}.") from error
+
+    function_names = {
+        node.func.id
+        for node in ast.walk(parsed)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    return (
+        frozenset(node.id for node in ast.walk(parsed) if isinstance(node, ast.Name))
+        - function_names
+    )
+
+
 @dataclass
 class NonlinearParameter:
-    """Description of a likelihood parent defined by a nonlinear expression.
+    """Description of a modeled parameter defined by a nonlinear expression.
 
     Attributes
     ----------
     name : str
-        Original likelihood parameter name.
+        Original modeled parameter name.
     expression : NonlinearExpression
-        Expression that defines the parameter on the link scale.
+        Expression that defines the parameter. The parent expression is on its link scale;
+        other parameter expressions are on the response scale.
     data_names : tuple of str
         Observed data columns referenced directly by the expression.
     alias : str or None
         Name used in the backend graph and posterior output.
     is_parent : bool
-        Whether this is the likelihood's parent parameter.
+        Whether this is the likelihood's parent parameter, whose expression is on the link scale.
     """
 
     name: str
@@ -179,6 +199,25 @@ class NonlinearParameter:
     def label(self):
         """Return the aliased name when present, otherwise the original name."""
         return self.alias or self.name
+
+
+@dataclass(frozen=True)
+class ParameterDependencyGraph:
+    """Dependency metadata for a nonlinear model's parameter-level expressions.
+
+    Attributes
+    ----------
+    nodes : dict of str to NonlinearParameter
+        Parameters defined by nonlinear expressions, keyed by their original names.
+    dependencies : dict of str to tuple of str
+        Direct parameter dependencies for every node.
+    order : tuple of str
+        Deterministic topological order in which to evaluate the nodes.
+    """
+
+    nodes: dict[str, NonlinearParameter]
+    dependencies: dict[str, tuple[str, ...]]
+    order: tuple[str, ...]
 
 
 def split_nonlinear_formula(formula: str) -> tuple[str, str]:
@@ -207,31 +246,49 @@ def split_nonlinear_formula(formula: str) -> tuple[str, str]:
     return f"{lhs.strip()} ~ 1", rhs.strip()
 
 
-def resolve_nonlinear_data_names(expression, predictors, data) -> tuple[str, ...]:
-    """Resolve and validate observed columns used by a nonlinear expression.
+def resolve_nonlinear_symbols(expression, parameter_names, data):
+    """Partition expression symbols into modeled parameters and observed data columns.
 
     Parameters
     ----------
     expression : NonlinearExpression
         Parsed nonlinear expression.
-    predictors : Mapping
-        Modeled nonlinear parameters keyed by their original names.
+    parameter_names : Collection of str
+        Names available as modeled parameters.
     data : pandas.DataFrame
         Model data containing observed expression inputs.
 
     Returns
     -------
-    tuple of str
-        Sorted names of numeric data columns used directly by the expression.
+    dependencies : tuple of str
+        Modeled parameters referenced directly by the expression.
+    data_names : tuple of str
+        Observed data columns referenced directly by the expression.
 
     Raises
     ------
     ValueError
-        If a symbol is unresolved or an expression input is not numeric.
+        If a symbol is ambiguous, unresolved, or names non-numeric data.
+
+    Examples
+    --------
+    >>> expression = NonlinearExpression.parse("sigma_y + attempts")
+    >>> data = pd.DataFrame({"attempts": [10]})
+    >>> resolve_nonlinear_symbols(expression, ("sigma_y",), data)
+    (('sigma_y',), ('attempts',))
     """
-    predictor_names = set(predictors)
-    data_names = expression.symbols - predictor_names
-    unknown = data_names - set(data.columns)
+    parameter_names = set(parameter_names)
+    data_columns = set(data.columns)
+    collisions = expression.symbols & parameter_names & data_columns
+    if collisions:
+        raise ValueError(
+            "Nonlinear expression symbols must not be both modeled parameters and data columns: "
+            f"{sorted(collisions)}."
+        )
+
+    dependencies = expression.symbols & parameter_names
+    data_names = expression.symbols - dependencies
+    unknown = data_names - data_columns
     if unknown:
         raise ValueError(
             "No nonlinear parameter formula or data column was found for symbol(s): "
@@ -245,11 +302,78 @@ def resolve_nonlinear_data_names(expression, predictors, data) -> tuple[str, ...
         raise ValueError(
             f"Nonlinear expression data must be numeric. Invalid column(s): {nonnumeric}."
         )
-    return tuple(sorted(data_names))
+    return tuple(sorted(dependencies)), tuple(sorted(data_names))
+
+
+def parameter_dependency_order(dependencies, declaration_order=None) -> tuple[str, ...]:
+    """Return a deterministic topological order for modeled parameters.
+
+    Parameters
+    ----------
+    dependencies : Mapping of str to Collection of str
+        Direct dependencies for every modeled parameter node.
+    declaration_order : Collection of str, optional
+        Preferred order between otherwise independent nodes.
+
+    Returns
+    -------
+    tuple of str
+        Parameter names with every dependency preceding its dependent.
+
+    Raises
+    ------
+    ValueError
+        If a dependency is unknown, a node references itself, or the graph contains a cycle.
+
+    Examples
+    --------
+    >>> parameter_dependency_order({"mu": (), "sigma": ("mu",)})
+    ('mu', 'sigma')
+    """
+    dependencies = {name: tuple(values) for name, values in dependencies.items()}
+    names = set(dependencies)
+    unknown = {value for values in dependencies.values() for value in values if value not in names}
+    if unknown:
+        raise ValueError(f"Unknown nonlinear parameter reference(s): {sorted(unknown)}.")
+
+    self_dependencies = sorted(name for name, values in dependencies.items() if name in values)
+    if self_dependencies:
+        raise ValueError(
+            "Nonlinear parameters cannot depend on themselves: " f"{self_dependencies}."
+        )
+
+    preferred = list(dict.fromkeys(declaration_order or ()))
+    preferred.extend(sorted(names - set(preferred)))
+    rank = {name: index for index, name in enumerate(preferred)}
+    state = {name: 0 for name in names}
+    order = []
+    path = []
+
+    def visit(name):
+        if state[name] == 2:
+            return
+        if state[name] == 1:
+            start = path.index(name)
+            cycle = path[start:] + [name]
+            raise ValueError(
+                "Cycle detected between nonlinear parameters: " + " -> ".join(cycle) + "."
+            )
+
+        state[name] = 1
+        path.append(name)
+        for dependency in sorted(dependencies[name], key=rank.__getitem__):
+            visit(dependency)
+        path.pop()
+        state[name] = 2
+        order.append(name)
+
+    for name in sorted(names, key=rank.__getitem__):
+        visit(name)
+    return tuple(order)
 
 
 def prepare_nonlinear_data(
-    formula, expression, data, dropna, include_response=True, parameter_names=()
+    formula, expressions, data, dropna, include_response=True, parameter_names=()
 ):
     """Prepare aligned, complete observations for every part of a nonlinear model.
 
@@ -257,8 +381,9 @@ def prepare_nonlinear_data(
     ----------
     formula : Formula
         Nonlinear model formula and its parameter formulas.
-    expression : NonlinearExpression
-        Parsed nonlinear expression.
+    expressions : Mapping of str to NonlinearExpression or NonlinearExpression
+        Parsed expressions keyed by the parameter they define. A single expression is accepted
+        for backwards compatibility.
     data : pandas.DataFrame
         Model or prediction data.
     dropna : bool
@@ -266,7 +391,7 @@ def prepare_nonlinear_data(
     include_response : bool
         Whether the response is required in ``data``.
     parameter_names : Collection of str
-        Likelihood parameter names used to detect parameter dependencies.
+        Names of modeled parameters, which are excluded from required data columns.
 
     Returns
     -------
@@ -276,23 +401,23 @@ def prepare_nonlinear_data(
     Raises
     ------
     ValueError
-        If parameters depend on one another or required data are incomplete.
+        If required data are incomplete.
     """
-    names = set(formula.nlpars)
-    variables = set(expression.symbols - names)
+    parameter_names = set(parameter_names) | set(formula.nlpars)
+    if isinstance(expressions, NonlinearExpression):
+        expressions = {"__parent__": expressions}
+    variables = set()
+    for expression in expressions.values():
+        variables.update(expression.symbols - parameter_names)
     if include_response:
         response_formula, _ = split_nonlinear_formula(formula.main)
         variables.update(fm.model_description(response_formula).var_names)
     for name, predictor_formula in zip(formula.additionals_lhs, formula.additionals):
+        if name in expressions:
+            continue
         rhs = predictor_formula.partition("~")[2]
         predictor_variables = fm.model_description(rhs).var_names
-        dependencies = (names | (set(parameter_names) - set(data.columns))) & predictor_variables
-        if dependencies:
-            raise ValueError(
-                "Nonlinear parameters cannot depend on one another. "
-                f"'{name}' references {sorted(dependencies)}."
-            )
-        variables.update(predictor_variables)
+        variables.update(set(predictor_variables) - parameter_names)
 
     columns = sorted(variables & set(data.columns))
     incomplete = data[columns].isna().any(axis=1)

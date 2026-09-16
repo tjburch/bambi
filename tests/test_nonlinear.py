@@ -6,6 +6,11 @@ import xarray as xr
 from scipy.special import erf, erfc, expit, logit, ndtr, ndtri  # pylint: disable=no-name-in-module
 
 import bambi as bmb
+from bambi.nonlinear import (
+    NonlinearExpression,
+    parameter_dependency_order,
+    resolve_nonlinear_symbols,
+)
 
 from helpers import assert_ip_dlogp
 
@@ -17,6 +22,99 @@ def normal_prior(sigma=2):
 def linear_data(size=30):
     x = np.linspace(-1, 1, size)
     return pd.DataFrame({"x": x, "z": x**2, "y": 1 + 2 * x})
+
+
+def test_parameter_dependency_order_is_stable_and_topological():
+    dependencies = {
+        "sigma": ("mu", "sigma_y"),
+        "mu": ("p_angle", "p_distance"),
+        "sigma_y": (),
+        "p_distance": (),
+        "p_angle": (),
+    }
+
+    result = parameter_dependency_order(
+        dependencies, ("sigma", "mu", "sigma_y", "p_distance", "p_angle")
+    )
+
+    assert result == ("p_distance", "p_angle", "mu", "sigma_y", "sigma")
+
+
+@pytest.mark.parametrize(
+    ("dependencies", "message"),
+    [
+        ({"mu": ("mu",)}, "cannot depend on themselves: \\['mu'\\]"),
+        ({"mu": ("sigma",), "sigma": ("mu",)}, "mu -> sigma -> mu"),
+        (
+            {"mu": ("scale",), "scale": ("sigma",), "sigma": ("mu",)},
+            "mu -> scale -> sigma -> mu",
+        ),
+        ({"mu": ("missing",)}, "Unknown nonlinear parameter reference.*missing"),
+    ],
+)
+def test_parameter_dependency_order_errors(dependencies, message):
+    with pytest.raises(ValueError, match=message):
+        parameter_dependency_order(dependencies)
+
+
+def test_resolve_nonlinear_symbols_separates_parameters_and_data():
+    expression = NonlinearExpression.parse("sqrt(mu * (1 - mu) / attempts + sigma_y ** 2)")
+    data = pd.DataFrame({"attempts": [10, 20]})
+
+    dependencies, data_names = resolve_nonlinear_symbols(
+        expression, ("mu", "sigma", "sigma_y"), data
+    )
+
+    assert dependencies == ("mu", "sigma_y")
+    assert data_names == ("attempts",)
+
+
+def test_resolve_nonlinear_symbols_rejects_ambiguous_name():
+    expression = NonlinearExpression.parse("mu + x")
+    data = pd.DataFrame({"mu": [0.2], "x": [1.0]})
+
+    with pytest.raises(ValueError, match="both modeled parameters and data columns.*mu"):
+        resolve_nonlinear_symbols(expression, ("mu",), data)
+
+
+@pytest.mark.parametrize(
+    ("main", "additionals", "message"),
+    [
+        ("y ~ mu + a * x", (), "cannot depend on themselves.*mu"),
+        ("y ~ sigma * a", ("sigma ~ mu + 1",), "mu -> sigma -> mu"),
+        (
+            "y ~ a * x",
+            ("a ~ sigma", "sigma ~ mu + 1"),
+            "a -> sigma -> mu -> a",
+        ),
+        (
+            "y ~ a * x",
+            ("sigma ~ mu + unknown",),
+            "No nonlinear parameter formula or data column.*unknown",
+        ),
+    ],
+)
+def test_parameter_dependency_validation(main, additionals, message):
+    formula = bmb.Formula(main, *additionals, nlpars=("a",))
+    with pytest.raises(ValueError, match=message):
+        bmb.Model(formula, linear_data())
+
+
+def test_likelihood_parameter_and_expression_data_collision_is_rejected():
+    data = linear_data().assign(mu=0.5)
+    formula = bmb.Formula("y ~ a * x", "sigma ~ mu + z", nlpars=("a",))
+
+    with pytest.raises(ValueError, match="both modeled parameters and data columns.*mu"):
+        bmb.Model(formula, data)
+
+
+@pytest.mark.parametrize("response", ["mu", "sigma"])
+def test_likelihood_parameter_and_response_data_collision_is_rejected(response):
+    data = linear_data().rename(columns={"y": response})
+    formula = bmb.Formula(f"{response} ~ a * x", nlpars=("a",))
+
+    with pytest.raises(ValueError, match=f"modeled likelihood parameters.*{response}"):
+        bmb.Model(formula, data)
 
 
 def exponential_formula(group_specific=False):
@@ -415,10 +513,6 @@ def test_group_specific_parameter_predicts_new_data(monkeypatch, sparse_dot):
             bmb.Formula("y ~ a + unknown", nlpars=("a",)),
             "No nonlinear parameter formula or data column",
         ),
-        (
-            bmb.Formula("y ~ a + b * x", "a ~ 1 + b", nlpars=("a", "b")),
-            "cannot depend on one another",
-        ),
     ],
 )
 def test_validation_errors(formula, error):
@@ -564,10 +658,29 @@ def test_dependency_check_ignores_string_literals():
     assert_ip_dlogp(model)
 
 
-@pytest.mark.parametrize("rhs", ["b", "I(b ** 2)", "(1 | b)"])
-def test_dependency_check_uses_formula_variables(rhs):
+def test_nonlinear_predictor_can_depend_on_another_predictor():
+    formula = bmb.Formula("y ~ a + b * x", "a ~ 1 + b", nlpars=("a", "b"))
+    model = bmb.Model(formula, linear_data())
+    model.build()
+    draws = xr.Dataset(
+        {
+            "b_Intercept": (("chain", "draw"), [[0.25, -0.5]]),
+            "sigma": (("chain", "draw"), [[1.0, 1.0]]),
+        }
+    )
+
+    with model.backend.model:
+        actual = pm.compute_deterministics(draws, var_names=["mu"], progressbar=False)
+
+    x = xr.DataArray(linear_data().x.to_numpy(), dims="__obs__")
+    expected = 1 + draws.b_Intercept + draws.b_Intercept * x
+    np.testing.assert_allclose(actual.mu, expected)
+
+
+@pytest.mark.parametrize(("rhs", "error"), [("I(b ** 2)", "function 'I'"), ("(1 | b)", "BitOr")])
+def test_parameter_dependent_formula_requires_nonlinear_expression_syntax(rhs, error):
     formula = bmb.Formula("y ~ a + b * x", f"a ~ {rhs}", nlpars=("a", "b"))
-    with pytest.raises(ValueError, match="cannot depend on one another"):
+    with pytest.raises(ValueError, match=error):
         bmb.Model(formula, linear_data())
 
 

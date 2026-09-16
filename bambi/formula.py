@@ -24,8 +24,10 @@ class Formula:
         without an additional formula use an intercept-only formula. Additional formulas can also
         describe ordinary auxiliary likelihood parameters, such as `sigma ~ z`.
         The expression is on the parent parameter's link scale. The family's inverse link is
-        applied once to the complete expression. Its separately modeled parameters use identity
-        links.
+        applied once to the complete expression. An additional formula that references a modeled
+        parameter is also treated as a nonlinear expression and evaluated after its dependencies;
+        these dependent expressions define their parameter on the response scale. Separately
+        modeled nonlinear predictors use identity links.
 
     Examples
     --------

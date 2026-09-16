@@ -31,6 +31,7 @@ _BINARY_OPERATORS = {
     "**": operator.pow,
 }
 
+
 def _logit(value):
     return pt.log(value) - pt.log1p(-value)
 

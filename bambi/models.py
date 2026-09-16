@@ -223,42 +223,16 @@ class Model:
                     "Nonlinear parameter names must not also be data columns: "
                     f"{sorted(collisions)}."
                 )
-            nonlinear_expressions = self._make_nonlinear_parameter_expressions(nonlinear_expression)
-            parameter_names = set(self.formula.nlpars) | set(self.family.likelihood.params)
-            nonlinear_metadata = {}
-            dependencies = {name: () for name in parameter_names}
-            for name, expression in nonlinear_expressions.items():
-                expression_dependencies, data_names = resolve_nonlinear_symbols(
-                    expression, parameter_names, self.data
-                )
-                nonlinear_metadata[name] = (expression_dependencies, data_names)
-                dependencies[name] = expression_dependencies
-
-            used_nlpars = {
-                dependency
-                for expression_dependencies, _ in nonlinear_metadata.values()
-                for dependency in expression_dependencies
-                if dependency in nonlinear_names
-            }
-            unused = nonlinear_names - used_nlpars
-            if unused:
-                raise ValueError(
-                    "Nonlinear parameter name(s) not used by the expression graph: "
-                    f"{sorted(unused)}."
-                )
-
-            declaration_order = (
-                tuple(self.formula.nlpars)
-                + tuple(self.family.likelihood.params)
-                + tuple(self.formula.additionals_lhs)
-            )
-            parameter_order = parameter_dependency_order(dependencies, declaration_order)
+            self.parameter_graph = self._make_parameter_dependency_graph(nonlinear_expression)
             self.data = prepare_nonlinear_data(
                 self.formula,
-                nonlinear_expressions,
+                {
+                    name: parameter.expression
+                    for name, parameter in self.parameter_graph.nodes.items()
+                },
                 self.data,
                 dropna,
-                parameter_names=parameter_names,
+                parameter_names=self.parameter_graph.dependencies,
             )
             design = fm.design_matrices(
                 response_formula, self.data, na_action, 1, additional_namespace
@@ -321,26 +295,14 @@ class Model:
         # Add parent parameter
         if self.formula.nlpars:
             self._nonlinear_predictors = self._make_nonlinear_predictors(
-                nonlinear_expressions,
+                self.parameter_graph.nodes,
                 priors,
                 na_action,
                 additional_namespace,
             )
-            nonlinear_parameters = {}
-            for name, expression in nonlinear_expressions.items():
-                expression_dependencies, data_names = nonlinear_metadata[name]
-                parameter = NonlinearParameter(
-                    name,
-                    expression,
-                    data_names,
-                    is_parent=name == parent_name,
-                )
-                nonlinear_parameters[name] = parameter
+            for name, parameter in self.parameter_graph.nodes.items():
                 if name == parent_name:
                     self.parameters[name] = parameter
-            self.parameter_graph = ParameterDependencyGraph(
-                nonlinear_parameters, dependencies, parameter_order
-            )
         else:
             self.parameters[parent_name] = ConditionalParameter(
                 parent_name, design, parent_priors, self, is_parent=True
@@ -423,6 +385,51 @@ class Model:
             if referenced:
                 expressions[name] = NonlinearExpression.parse(rhs.strip())
         return expressions
+
+    def _make_parameter_dependency_graph(self, parent_expression):
+        """Build nonlinear parameter nodes and their dependency graph."""
+        parent_name = self.family.likelihood.parent
+        nonlinear_names = set(self.formula.nlpars)
+        parameter_names = nonlinear_names | set(self.family.likelihood.params)
+        expressions = self._make_nonlinear_parameter_expressions(parent_expression)
+        metadata = {}
+        dependencies = {name: () for name in parameter_names}
+        for name, expression in expressions.items():
+            expression_dependencies, data_names = resolve_nonlinear_symbols(
+                expression, parameter_names, self.data
+            )
+            metadata[name] = (expression_dependencies, data_names)
+            dependencies[name] = expression_dependencies
+
+        used_nlpars = {
+            dependency
+            for expression_dependencies, _ in metadata.values()
+            for dependency in expression_dependencies
+            if dependency in nonlinear_names
+        }
+        unused = nonlinear_names - used_nlpars
+        if unused:
+            raise ValueError(
+                "Nonlinear parameter name(s) not used by the expression graph: "
+                f"{sorted(unused)}."
+            )
+
+        declaration_order = (
+            tuple(self.formula.nlpars)
+            + tuple(self.family.likelihood.params)
+            + tuple(self.formula.additionals_lhs)
+        )
+        order = parameter_dependency_order(dependencies, declaration_order)
+        nodes = {
+            name: NonlinearParameter(
+                name,
+                expression,
+                metadata[name][1],
+                is_parent=name == parent_name,
+            )
+            for name, expression in expressions.items()
+        }
+        return ParameterDependencyGraph(nodes, dependencies, order)
 
     def _make_nonlinear_predictors(self, expressions, priors, na_action, additional_namespace):
         explicit_formulas = dict(zip(self.formula.additionals_lhs, self.formula.additionals))
@@ -921,9 +928,8 @@ class Model:
                 if is_used is False:
                     missing_names.append(name)
         else:
-            nonlinear_parameters = self.parameter_graph.nodes if self.parameter_graph else {}
             modeled_parameters = (
-                self.conditional_parameters | self.nonlinear_predictors | nonlinear_parameters
+                self.conditional_parameters | self.nonlinear_predictors | self.parameter_graph.nodes
             )
             for parameter_name, parameter_aliases in aliases.items():
                 if parameter_name in self.marginal_parameters:

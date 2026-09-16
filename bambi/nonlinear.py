@@ -203,7 +203,17 @@ class NonlinearParameter:
 
 @dataclass(frozen=True)
 class ParameterDependencyGraph:
-    """Dependency metadata for a nonlinear model's parameter-level expressions."""
+    """Dependency metadata for a nonlinear model's parameter-level expressions.
+
+    Attributes
+    ----------
+    nodes : dict of str to NonlinearParameter
+        Parameters defined by nonlinear expressions, keyed by their original names.
+    dependencies : dict of str to tuple of str
+        Direct parameter dependencies for every node.
+    order : tuple of str
+        Deterministic topological order in which to evaluate the nodes.
+    """
 
     nodes: dict[str, NonlinearParameter]
     dependencies: dict[str, tuple[str, ...]]
@@ -259,6 +269,13 @@ def resolve_nonlinear_symbols(expression, parameter_names, data):
     ------
     ValueError
         If a symbol is ambiguous, unresolved, or names non-numeric data.
+
+    Examples
+    --------
+    >>> expression = NonlinearExpression.parse("sigma_y + attempts")
+    >>> data = pd.DataFrame({"attempts": [10]})
+    >>> resolve_nonlinear_symbols(expression, ("sigma_y",), data)
+    (('sigma_y',), ('attempts',))
     """
     parameter_names = set(parameter_names)
     data_columns = set(data.columns)
@@ -307,6 +324,11 @@ def parameter_dependency_order(dependencies, declaration_order=None) -> tuple[st
     ------
     ValueError
         If a dependency is unknown, a node references itself, or the graph contains a cycle.
+
+    Examples
+    --------
+    >>> parameter_dependency_order({"mu": (), "sigma": ("mu",)})
+    ('mu', 'sigma')
     """
     dependencies = {name: tuple(values) for name, values in dependencies.items()}
     names = set(dependencies)

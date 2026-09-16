@@ -20,7 +20,23 @@ class MarginalParameter:
 
 
 class ConditionalParameter:
-    def __init__(self, name, design, priors, spec, is_parent):
+    """Description of a quantity conditional on covariates or other modeled parameters.
+
+    A conditional parameter has either an additive design and terms, or a nonlinear expression
+    with the coefficient descriptions used directly by that expression.
+    """
+
+    def __init__(
+        self,
+        name,
+        design,
+        priors,
+        spec,
+        is_parent,
+        expression=None,
+        data_names=(),
+        nonlinear_coefficients=None,
+    ):
         self.terms = {}
         self.alias = None
         self.name = name
@@ -28,13 +44,27 @@ class ConditionalParameter:
         self.spec = spec
         self.is_parent = is_parent
         self.prefix = "" if is_parent else name
+        self.expression = expression
+        self.data_names = tuple(data_names)
+        self.nonlinear_coefficients = nonlinear_coefficients or {}
 
-        if self.design.common:
+        if (design is None) == (expression is None):
+            raise ValueError(
+                "A conditional parameter must have either an additive design or a nonlinear "
+                "expression."
+            )
+
+        if self.design is not None and self.design.common:
             self.add_common_terms(priors)
             self.add_hsgp_terms(priors)
 
-        if self.design.group:
+        if self.design is not None and self.design.group:
             self.add_group_specific_terms(priors)
+
+    @property
+    def is_nonlinear(self):
+        """Whether this parameter is defined by a nonlinear expression."""
+        return self.expression is not None
 
     @property
     def label(self):

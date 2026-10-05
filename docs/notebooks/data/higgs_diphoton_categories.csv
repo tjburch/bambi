@@ -1,0 +1,12 @@
+category,signal_events,sigma_eff,background_per_gev
+7TeV_cat0,3.2,1.21,3.3
+7TeV_cat1,16.3,1.26,37.5
+7TeV_cat2,21.5,1.59,74.8
+7TeV_cat3,32.8,2.47,193.6
+7TeV_cat4,2.9,1.73,1.7
+8TeV_cat0,6.1,1.38,7.4
+8TeV_cat1,21.0,1.53,54.7
+8TeV_cat2,30.2,1.94,115.2
+8TeV_cat3,40.0,2.86,256.5
+8TeV_cat4,2.6,2.06,1.3
+8TeV_cat5,3.0,1.95,3.7

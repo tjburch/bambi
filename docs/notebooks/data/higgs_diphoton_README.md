@@ -1,6 +1,6 @@
 # CMS discovery diphoton spectrum
 
-These files support the third example in `../nonlinear_expressions.ipynb`.
+These files support the [Higgs diphoton case study](../higgs_diphoton.ipynb).
 They contain real observed counts, not simulated events or digitized plot points.
 
 ## Sources and attribution

@@ -115,6 +115,11 @@
       subtitle: Scientific parameters and hierarchical curves
       href: nonlinear_expressions.ipynb
       thumbnail: thumbnails/nonlinear_expressions.png
+    - title: Higgs diphoton case study
+      subtitle: Nonlinear signal-plus-background modeling
+      href: higgs_diphoton.ipynb
+      thumbnail: thumbnails/higgs_diphoton.png
+      description: Weighted diphoton spectrum and background-subtracted model comparison
     - title: Bayesian model building
       subtitle: Golf putting from first principles
       href: golf_putting.ipynb

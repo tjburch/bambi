@@ -596,11 +596,11 @@ def test_nonlinear_ordinal_parent_is_rejected(family):
 
 def test_non_proportion_multicolumn_response_is_rejected():
     data = linear_data()
-    data["status"] = "none"
-    formula = bmb.Formula("censored(y, status) ~ rate * x", nlpars=("rate",))
+    data["y"] = pd.Categorical(["low", "high"] * (len(data) // 2))
+    formula = bmb.Formula("y ~ rate * x", nlpars=("rate",))
 
     with pytest.raises(ValueError, match="one observed response or a proportion response"):
-        bmb.Model(formula, data)
+        bmb.Model(formula, data, family="gaussian")
 
 
 def test_dropna_aligns_all_model_inputs():
@@ -950,6 +950,154 @@ def test_dropna_aligns_nonlinear_expression_and_weighted_response():
     np.testing.assert_array_equal(
         model.response_term.data[:, 1], data.w.dropna().to_numpy()[[0, 2, 3]]
     )
+    np.testing.assert_array_equal(model.data.index, [0, 2, 3])
+
+
+def censored_nonlinear_data(statuses=("none", "right", "none", "right")):
+    return pd.DataFrame(
+        {
+            "x": [-1.0, 0.0, 0.5, 1.0][: len(statuses)],
+            "z": [0.0, 1.0, 0.5, -0.5][: len(statuses)],
+            "y": [-0.8, 0.4, 1.3, 2.5][: len(statuses)],
+            "status": list(statuses),
+        }
+    )
+
+
+def censored_nonlinear_model(data, dropna=False):
+    formula = bmb.Formula("censored(y, status) ~ a + rate * x", "a ~ 1 + z", nlpars=("a", "rate"))
+    priors = {
+        "a": {"Intercept": normal_prior(), "z": normal_prior()},
+        "rate": normal_prior(),
+        "sigma": bmb.Prior("HalfNormal", sigma=1),
+    }
+    return bmb.Model(formula, data, priors=priors, center_predictors=False, dropna=dropna)
+
+
+def test_nonlinear_censored_response_matches_pymc():
+    data = censored_nonlinear_data(("left", "right", "none", "right"))
+    model = censored_nonlinear_model(data)
+    model.build()
+    point = {
+        "a_Intercept": 0.3,
+        "a_z": -0.2,
+        "rate": 1.1,
+        "sigma_log__": np.log(1.2),
+    }
+    values = {name: point[name] for name in ("a_Intercept", "a_z", "rate")}
+    mu = (
+        values["a_Intercept"]
+        + values["a_z"] * data.z.to_numpy()
+        + values["rate"] * data.x.to_numpy()
+    )
+    actual_mu = model.backend.model.compile_fn(
+        model.backend.model["mu"],
+        inputs=[model.backend.model[name] for name in values],
+    )(values)
+    np.testing.assert_allclose(actual_mu, mu)
+
+    status = data.status.to_numpy()
+    y = data.y.to_numpy()
+    lower = np.where(status == "left", y, -np.inf)
+    upper = np.where(status == "right", y, np.inf)
+    with pm.Model() as direct:
+        intercept = pm.Normal("a_Intercept", mu=0, sigma=2)
+        slope = pm.Normal("a_z", mu=0, sigma=2)
+        rate = pm.Normal("rate", mu=0, sigma=2)
+        sigma = pm.HalfNormal("sigma", sigma=1)
+        direct_mu = intercept + slope * data.z.to_numpy() + rate * data.x.to_numpy()
+        pm.Censored(
+            "observed",
+            pm.Normal.dist(mu=direct_mu, sigma=sigma),
+            lower=lower,
+            upper=upper,
+            observed=y,
+        )
+
+    np.testing.assert_allclose(
+        model.backend.model.compile_logp()(point), direct.compile_logp()(point)
+    )
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+@pytest.mark.parametrize("training_status", ["left", "right"])
+def test_nonlinear_censored_prediction_and_new_status_log_likelihood(training_status):
+    data = censored_nonlinear_data(("none", training_status, "none", training_status))
+    model = censored_nonlinear_model(data)
+    model.set_alias({"y": "outcome"})
+    idata = model.fit(draws=3, chains=1, random_seed=107)
+    in_sample = model.predict(idata, kind="response", inplace=False)
+    assert in_sample.posterior_predictive[model.response_term.label].shape == (1, 3, 4)
+    assert in_sample.posterior["mu"].shape == (1, 3, 4)
+
+    new_data = pd.DataFrame({"x": [0.2, -0.4], "z": [0.5, -1.0]})
+    predictions = model.predict(idata, data=new_data, kind="response", inplace=False)
+    assert predictions.predictions["mu"].shape == (1, 3, 2)
+    assert predictions.predictions[model.response_term.label].shape == (1, 3, 2)
+    single = model.predict(idata, data=new_data.iloc[:1], kind="response", inplace=False)
+    assert single.predictions[model.response_term.label].shape == (1, 3, 1)
+    assert single.predictions["mu"].shape == (1, 3, 1)
+
+    conditional_data = new_data.assign(y=[0.2, -0.3], status=["left", "right"])
+    with pytest.raises(ValueError, match="Conditional censored-response predictions require"):
+        model.predict(idata, data=new_data, kind="response_conditional", inplace=False)
+    conditional = model.predict(
+        idata, data=conditional_data, kind="response_conditional", inplace=False
+    )
+    draws = conditional.predictions[model.response_term.label].to_numpy()
+    assert (draws[..., 0] <= conditional_data.y.iloc[0]).all()
+    assert (draws[..., 1] >= conditional_data.y.iloc[1]).all()
+    conditional_single = model.predict(
+        idata, data=conditional_data.iloc[:1], kind="response_conditional", inplace=False
+    )
+    conditional_single_draws = conditional_single.predictions[model.response_term.label].to_numpy()
+    assert conditional_single_draws.shape == (1, 3, 1)
+    assert (conditional_single_draws[..., 0] <= conditional_data.y.iloc[0]).all()
+    np.testing.assert_array_equal(
+        model.backend.model["status_data"].get_value(), model.response_term.data[:, 1]
+    )
+
+    from scipy.stats import norm
+
+    observed = pd.DataFrame(
+        {
+            "x": [0.2, -0.4, 0.7],
+            "z": [0.5, -1.0, 0.2],
+            "y": [0.2, -0.3, 0.8],
+            "status": ["left", "right", "none"],
+        }
+    )
+    likelihood = model.compute_log_likelihood(idata, data=observed, inplace=False)
+    actual = likelihood.log_likelihood[model.response_term.label].to_numpy()
+    likelihood_prediction = model.predict(
+        idata, data=observed.drop(columns=["y", "status"]), kind="response", inplace=False
+    )
+    mu = likelihood_prediction.predictions["mu"].to_numpy()
+    sigma = idata.posterior["sigma"].to_numpy()[..., None]
+    expected = np.where(
+        observed.status.to_numpy() == "left",
+        norm.logcdf(observed.y.to_numpy(), loc=mu, scale=sigma),
+        np.where(
+            observed.status.to_numpy() == "right",
+            norm.logsf(observed.y.to_numpy(), loc=mu, scale=sigma),
+            norm.logpdf(observed.y.to_numpy(), loc=mu, scale=sigma),
+        ),
+    )
+    np.testing.assert_allclose(actual, expected)
+    for variable in ("y", "status"):
+        with pytest.raises(ValueError, match="Censored response log-likelihood requires variables"):
+            model.compute_log_likelihood(idata, data=observed.drop(columns=variable), inplace=False)
+
+
+def test_dropna_aligns_nonlinear_expression_and_censored_response():
+    data = censored_nonlinear_data(("left", "right", "none", "right")).assign(
+        z=[0.0, np.nan, 0.5, -0.5]
+    )
+    model = censored_nonlinear_model(data, dropna=True)
+
+    assert len(model.response_term.data) == 3
+    np.testing.assert_array_equal(model.response_term.data[:, 0], data.y.iloc[[0, 2, 3]])
+    np.testing.assert_array_equal(model.response_term.data[:, 1], [-1, 0, 1])
     np.testing.assert_array_equal(model.data.index, [0, 2, 3])
 
 

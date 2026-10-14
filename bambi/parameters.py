@@ -304,7 +304,11 @@ class ConditionalParameter(Conditional):
 
 
 class ConditionalCoefficient(Conditional):
-    """A nonlinear coefficient defined by covariates or other modeled quantities."""
+    """A nonlinear coefficient defined by covariates or other modeled quantities.
+
+    Additive terms use the parent's coefficient dimensions. These can differ from the
+    likelihood parameter dimensions, for example when a reference category is omitted.
+    """
 
     @property
     def prefix(self):

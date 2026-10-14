@@ -2192,9 +2192,9 @@ def test_scalar_transform_result_broadcasts_for_prediction(monkeypatch, transfor
         np.testing.assert_array_equal(group.mu.values, np.ones((1, 1, size)))
 
 
-@pytest.mark.parametrize("family", ["categorical", "cumulative", "sratio"])
-def test_vector_parent_links_remain_rejected(family):
-    with pytest.raises(ValueError, match="scalar parent parameter"):
+@pytest.mark.parametrize("family", ["cumulative", "sratio"])
+def test_ordinal_nonlinear_predictors_remain_rejected(family):
+    with pytest.raises(ValueError, match="ordinal predictors remain unsupported"):
         bmb.Model(
             bmb.Formula("y ~ a * x", nlpars=("a",)),
             pd.DataFrame({"y": [0, 1, 2], "x": [0, 1, 2]}),

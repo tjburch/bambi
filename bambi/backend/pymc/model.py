@@ -16,7 +16,11 @@ from pymc.model.transform.conditioning import remove_value_transforms
 from xarray import DataTree
 
 from bambi.backend.pymc.coords import coords_from_response
-from bambi.backend.pymc.nonlinear import build_new_nonlinear_data, build_nonlinear_parameter
+from bambi.backend.pymc.nonlinear import (
+    build_new_nonlinear_data,
+    build_nonlinear_parameter,
+    nonlinear_predictor_spec,
+)
 from bambi.backend.pymc.parameters import (
     build_conditional_parameter,
     build_marginal_parameter,
@@ -43,7 +47,6 @@ from bambi.backend.pymc.terms.response import (
     replace_response_variables,
 )
 from bambi.config import config as bmb_config
-from bambi.families.types import ParamSpec
 from bambi.nonlinear import prepare_nonlinear_data
 from bambi.parameters import Conditional, ConditionalCoefficient, Marginal
 from bambi.utils import as_dataset
@@ -136,7 +139,7 @@ class PyMCModel:
                     self._conditional_parameter_info[name] = parameter_info
                     additive_value = build_additive_predictor(
                         parameter_info,
-                        ParamSpec(links=["identity"]),
+                        nonlinear_predictor_spec(quantity, self.spec.family),
                         self._group_specific_state,
                         model,
                     )

@@ -28,6 +28,7 @@ from bambi.families import Family
 from bambi.families.builtin import (
     AdjacentCategory,
     Bernoulli,
+    Categorical,
     ContinuationRatio,
     Cumulative,
     DirichletMultinomial,
@@ -104,6 +105,9 @@ class Model:
         For nonlinear models, coefficients without a formula or with an intercept-only formula
         accept a direct prior. Coefficients with other additive formulas accept a term-prior
         dictionary.
+        For categorical and multinomial parents, conditional coefficient formulas use one
+        coefficient per non-reference category. Dirichlet-multinomial uses every category.
+        Direct-prior and intercept-only coefficients remain scalar and shared across categories.
         Nonlinear coefficient priors are not scaled using the response.
         Explicit priors are recommended.
     link : str or dict of str to str, optional
@@ -215,10 +219,19 @@ class Model:
 
         ## Main parameter
         if self.formula.is_nonlinear:
-            if self.family.RESPONSE_NDIM != 0:
+            vector_family = isinstance(
+                self.family, (Categorical, Multinomial, DirichletMultinomial)
+            )
+            if self.family.RESPONSE_NDIM != 0 and not vector_family:
                 raise ValueError("Nonlinear formulas currently require a univariate response.")
-            if self.family.get_param_spec(self.family.likelihood.parent).ndim != 0:
-                raise ValueError("Nonlinear formulas currently require a scalar parent parameter.")
+            if (
+                self.family.get_param_spec(self.family.likelihood.parent).ndim != 0
+                and not vector_family
+            ):
+                raise ValueError(
+                    "Nonlinear vector parents are supported only for categorical, multinomial, "
+                    "and dirichlet_multinomial families; ordinal predictors remain unsupported."
+                )
 
             response_formula, _ = split_nonlinear_formula(self.formula.main)
             response_names = set(fm.model_description(response_formula).var_names)
@@ -298,6 +311,11 @@ class Model:
             self.formula.is_nonlinear
             and self.response_term.data.ndim != 1
             and not self.response_term.is_binomial
+            and not (self.response_term.categorical and isinstance(self.family, Categorical))
+            and not (
+                self.response_term.is_counts
+                and isinstance(self.family, (Multinomial, DirichletMultinomial))
+            )
         ):
             raise ValueError(
                 "Nonlinear formulas currently require one observed response or a proportion "

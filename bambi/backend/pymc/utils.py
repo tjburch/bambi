@@ -302,25 +302,21 @@ def make_weighted_logp(dist: pm.Distribution):
     """
 
     # NOTE: Should we weight the logp or weight the p? This does the first.
-    def logp(value, *dist_params, weights):
+    def logp(value, *dist_params):
+        *dist_params, weights = dist_params
         weights = pt.as_tensor_variable(weights)
         return weights * pm.logp(dist.dist(*dist_params), value)
 
     return logp
 
 
-def create_cdist(dist: pm.Distribution):
-    def fun(*params):
-        *dist_params, size = params
-        return dist.dist(*dist_params, size=size)
-
-    return fun
-
-
 def make_weighted_distribution(dist: pm.Distribution):
     wlogp = make_weighted_logp(dist)
     dist_args = get_dist_args(dist)
-    cdist = create_cdist(dist)
+
+    def cdist(*params):
+        *dist_params, _weights, size = params
+        return dist.dist(*dist_params, size=size)
 
     # Get distribution name in a safe way.
     rv_op = getattr(dist, "rv_op", None)
@@ -340,7 +336,8 @@ def make_weighted_distribution(dist: pm.Distribution):
             return pm.CustomDist(
                 name,
                 *dist_params,
-                logp=functools.partial(wlogp, weights=weights),
+                weights,
+                logp=wlogp,
                 dist=cdist,
                 class_name=class_name,
                 **kwargs,
@@ -352,7 +349,8 @@ def make_weighted_distribution(dist: pm.Distribution):
             weights = 1 if "weights" not in kwargs else kwargs.pop("weights")
             return pm.CustomDist.dist(
                 *dist_params,
-                logp=functools.partial(wlogp, weights=weights),
+                weights,
+                logp=wlogp,
                 dist=cdist,
                 class_name=class_name,
                 **kwargs,

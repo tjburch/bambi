@@ -80,7 +80,10 @@ class Model:
     formula : str or Formula
         A model description written using the formula syntax from the `formulae` library.
         Declare nonlinear coefficient names through `Formula.nlpars`. Use `nl(...)` for explicit
-        arithmetic contributions, which can also contain only observed data.
+        arithmetic contributions, which can also contain only observed data. Nonlinear formulas
+        support weighted responses for families that support ordinary weighted formulas and have
+        scalar responses and scalar parent parameters. New-data predictions use unit weights
+        unless a weight column is supplied.
     data : pd.DataFrame
         A pandas dataframe containing the data on which the model will be fit, with column
         names matching variables defined in the formula.
@@ -307,9 +310,15 @@ class Model:
 
         # Add response
         self.response_term = ResponseTerm(design.response)
+        weighted_scalar_response = (
+            self.response_term.is_weighted
+            and self.family.RESPONSE_NDIM == 0
+            and self.family.get_param_spec(self.family.likelihood.parent).ndim == 0
+        )
         if (
             self.formula.is_nonlinear
             and self.response_term.data.ndim != 1
+            and not weighted_scalar_response
             and not self.response_term.is_binomial
             and not (self.response_term.categorical and isinstance(self.family, Categorical))
             and not (

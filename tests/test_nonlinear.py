@@ -842,6 +842,117 @@ def test_nl_wrapper_accepts_underscore_marginal_coefficient():
     assert "_a" in model.backend.model.named_vars
 
 
+def weighted_nonlinear_data():
+    return pd.DataFrame(
+        {
+            "x": [-1.0, 0.0, 0.5, 1.0],
+            "z": [0.0, 1.0, 0.5, -0.5],
+            "y": [-0.8, 0.4, 1.3, 2.5],
+            "w": [0.5, 2.0, 1.5, 3.0],
+        }
+    )
+
+
+def weighted_nonlinear_model(data=None, dropna=False):
+    formula = bmb.Formula("weighted(y, w) ~ a + b * x", "a ~ 1 + z", nlpars=("a", "b"))
+    priors = {
+        "a": {"Intercept": normal_prior(), "z": normal_prior()},
+        "b": normal_prior(),
+        "sigma": bmb.Prior("HalfNormal", sigma=1),
+    }
+    return bmb.Model(
+        formula,
+        weighted_nonlinear_data() if data is None else data,
+        priors=priors,
+        center_predictors=False,
+        dropna=dropna,
+    )
+
+
+def test_nonlinear_weighted_response_matches_manual_logp():
+    from scipy.stats import halfnorm, norm
+
+    data = weighted_nonlinear_data()
+    model = weighted_nonlinear_model(data)
+    model.build()
+    point = {"a_Intercept": 0.3, "a_z": -0.2, "b": 1.1, "sigma_log__": np.log(1.2)}
+    sigma = np.exp(point["sigma_log__"])
+    mu = point["a_Intercept"] + point["a_z"] * data.z.to_numpy() + point["b"] * data.x.to_numpy()
+
+    actual_mu = model.backend.model.compile_fn(
+        model.backend.model["mu"],
+        inputs=[model.backend.model[name] for name in ("a_Intercept", "a_z", "b")],
+    )({name: point[name] for name in ("a_Intercept", "a_z", "b")})
+    np.testing.assert_allclose(actual_mu, mu)
+
+    expected = np.sum(data.w * norm.logpdf(data.y, loc=mu, scale=sigma))
+    expected += sum(
+        norm.logpdf(point[name], loc=0, scale=2) for name in ("a_Intercept", "a_z", "b")
+    )
+    expected += halfnorm.logpdf(sigma, scale=1) + np.log(sigma)
+    np.testing.assert_allclose(model.backend.model.compile_logp()(point), expected)
+
+
+@pytest.mark.parametrize("family", ["categorical", "multinomial"])
+def test_nonlinear_weighted_response_rejects_vector_parents(family):
+    formula = bmb.Formula("weighted(y, w) ~ a * x", nlpars=("a",))
+    with pytest.raises(ValueError, match="Nonlinear formulas currently require"):
+        bmb.Model(formula, weighted_nonlinear_data(), family=family, priors={"a": normal_prior()})
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+def test_nonlinear_weighted_prediction_and_log_likelihood():
+    model = weighted_nonlinear_model()
+    idata = model.fit(draws=3, chains=1, random_seed=106)
+    new_data = pd.DataFrame({"x": [0.2, -0.4], "z": [0.5, -1.0]})
+
+    predictions = model.predict(
+        idata, data=new_data, kind="response", inplace=False, random_seed=107
+    )
+    weighted_predictions = model.predict(
+        idata, data=new_data.assign(w=[0.25, 4.0]), kind="response", inplace=False, random_seed=107
+    )
+    np.testing.assert_array_equal(
+        predictions.predictions[model.response_term.label],
+        weighted_predictions.predictions[model.response_term.label],
+    )
+    assert predictions.predictions["mu"].shape == (1, 3, 2)
+    assert predictions.predictions[model.response_term.label].shape == (1, 3, 2)
+    single = model.predict(idata, data=new_data.iloc[:1], kind="response", inplace=False)
+    assert single.predictions["mu"].shape == (1, 3, 1)
+
+    observed = new_data.assign(y=[0.1, -0.3], w=[0.25, 4.0])
+    likelihood = model.compute_log_likelihood(idata, data=observed, inplace=False)
+    assert likelihood.log_likelihood[model.response_term.label].shape == (1, 3, 2)
+    pointwise = likelihood.log_likelihood[model.response_term.label].values.copy()
+    assert np.isfinite(pointwise).all()
+
+    unit_weights = model.compute_log_likelihood(
+        idata, data=observed.drop(columns="w"), inplace=False
+    )
+    np.testing.assert_allclose(
+        pointwise / unit_weights.log_likelihood[model.response_term.label].values,
+        np.broadcast_to(observed.w.to_numpy(), pointwise.shape),
+    )
+    np.testing.assert_array_equal(
+        model.backend.model["w_data"].get_value(), weighted_nonlinear_data().w.to_numpy()
+    )
+
+
+def test_dropna_aligns_nonlinear_expression_and_weighted_response():
+    data = weighted_nonlinear_data().assign(z=[0.0, np.nan, 0.5, -0.5])
+    model = weighted_nonlinear_model(data, dropna=True)
+
+    assert len(model.response_term.data) == 3
+    np.testing.assert_array_equal(
+        model.response_term.data[:, 0], data.y.dropna().to_numpy()[[0, 2, 3]]
+    )
+    np.testing.assert_array_equal(
+        model.response_term.data[:, 1], data.w.dropna().to_numpy()[[0, 2, 3]]
+    )
+    np.testing.assert_array_equal(model.data.index, [0, 2, 3])
+
+
 def vector_parent_data():
     data = linear_data(6)
     data["y"] = pd.Categorical(

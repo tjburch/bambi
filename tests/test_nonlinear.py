@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 import pandas as pd
 import pymc as pm
@@ -16,6 +18,7 @@ from bambi.nonlinear import (
 
 from bambi.backend.pymc.nonlinear import evaluate_expression
 from bambi.parameters import MarginalCoefficient
+from bambi.families.types import DimType, ParamSpec, ResponseType
 
 from helpers import assert_ip_dlogp
 
@@ -2313,3 +2316,318 @@ def test_nonlinear_fixed_competing_risks_time_and_cause():
         np.testing.assert_array_equal(group.draw, [10, 11, 12])
         assert (group.outcome_time > 0).all()
         assert set(np.unique(group.outcome_cause)).issubset({1, 2})
+
+
+class VectorNormalFamily(bmb.Family):
+    DATA_TYPE = ResponseType.NUMERIC
+    RESPONSE_NDIM = 1
+    PARAMETERS = {"mu": ParamSpec(links=["identity"], ndim=1, coefs_dim=DimType.RESPONSE)}
+
+
+VECTOR_NORMAL_COV = np.array([[1.0, 0.2], [0.2, 2.0]])
+
+
+def vector_normal_family():
+    likelihood = bmb.Likelihood(
+        "VectorNormal",
+        params=["mu"],
+        parent="mu",
+        dist=partial(pm.MvNormal, cov=VECTOR_NORMAL_COV),
+    )
+    return VectorNormalFamily("vector_normal", likelihood, "identity")
+
+
+def vector_normal_data(size=6):
+    x = np.linspace(-1, 1, size)
+    z = np.linspace(0.2, 1.1, size)
+    y1 = 0.2 + 0.4 * x - 0.1 * z
+    y2 = -0.3 + 0.2 * x + 0.3 * z
+    return pd.DataFrame({"x": x, "z": z, "y1": y1, "y2": y2})
+
+
+def join_vector_response(first, second):
+    return np.column_stack((first, second))
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+def test_nonlinear_numeric_vector_response_fixed_values_and_predictions():
+    from scipy.stats import multivariate_normal
+
+    data = vector_normal_data()
+    formula = bmb.Formula(
+        "join(y1, y2) ~ 0 + nl(rate*x) + z",
+        "rate ~ 1 + z",
+        nlpars=("rate",),
+    )
+    prior = bmb.Prior("Normal", mu=0, sigma=2)
+    model = bmb.Model(
+        formula,
+        data,
+        family=vector_normal_family(),
+        priors={"rate": {"Intercept": prior, "z": prior}, "z": prior},
+        extra_namespace={"join": join_vector_response},
+        center_predictors=False,
+    )
+    model.set_alias({"mu": {"mu": "mean"}, "y1": "outcome"})
+    model.build()
+    backend = model.backend.model
+    response_name = model.response_term.label
+    event_dim = f"{model.response_term.name}_dim"
+    assert response_name == "outcome"
+    assert backend.named_vars_to_dims["mean"] == ("__obs__", event_dim)
+    assert backend.named_vars_to_dims["rate"] == ("__obs__", event_dim)
+    np.testing.assert_array_equal(backend.coords[event_dim], [0, 1])
+
+    coefficients = {
+        "rate_Intercept": np.array([0.3, -0.2]),
+        "rate_z": np.array([0.1, 0.25]),
+        "z": np.array([-0.15, 0.2]),
+    }
+    z = data.z.to_numpy()[:, None]
+    x = data.x.to_numpy()[:, None]
+    expected_mu = (coefficients["rate_Intercept"] + coefficients["rate_z"] * z) * x
+    expected_mu += coefficients["z"] * z
+    actual_mu = backend.compile_fn(backend["mean"], inputs=backend.free_RVs)(coefficients)
+    np.testing.assert_allclose(actual_mu, expected_mu)
+
+    with pm.Model() as direct:
+        direct_rate_intercept = pm.Normal("rate_Intercept", 0, 2, shape=2)
+        direct_rate_z = pm.Normal("rate_z", 0, 2, shape=2)
+        direct_z = pm.Normal("z", 0, 2, shape=2)
+        direct_mu = (direct_rate_intercept + direct_rate_z * z) * x + direct_z * z
+        pm.MvNormal(
+            "observed",
+            mu=direct_mu,
+            cov=VECTOR_NORMAL_COV,
+            observed=data[["y1", "y2"]].to_numpy(),
+        )
+    joint_logp = backend.compile_logp()(coefficients)
+    direct_logp = direct.compile_logp()(coefficients)
+    assert np.isfinite(joint_logp) and np.isfinite(direct_logp)
+    np.testing.assert_allclose(joint_logp, direct_logp)
+
+    idata = model.fit(draws=3, chains=2, random_seed=129)
+    posterior = idata.posterior.to_dataset().copy(deep=True)
+    for name, value in coefficients.items():
+        posterior[name] = posterior[name].copy(data=np.broadcast_to(value, posterior[name].shape))
+    idata["posterior"] = posterior
+    original_response = model.response_term.data.copy()
+    params = model.predict(idata, kind="response_params", inplace=False)
+    np.testing.assert_allclose(
+        params.posterior["mean"], np.broadcast_to(expected_mu, (2, 3, *expected_mu.shape))
+    )
+    prediction = model.predict(params, kind="response", inplace=False, random_seed=130)
+    draws = prediction.posterior_predictive[response_name]
+    assert draws.shape == (2, 3, len(data), 2)
+    likelihood = model.compute_log_likelihood(params, inplace=False)
+    expected_logp = np.array(
+        [
+            multivariate_normal.logpdf(row, mean=mu, cov=VECTOR_NORMAL_COV)
+            for row, mu in zip(data[["y1", "y2"]].to_numpy(), expected_mu)
+        ]
+    )
+    np.testing.assert_allclose(
+        likelihood.log_likelihood[response_name], np.broadcast_to(expected_logp, (2, 3, len(data)))
+    )
+
+    for count in (2, 1):
+        new_data = data.iloc[:count]
+        predicted = model.predict(
+            params,
+            data=new_data[["x", "z"]],
+            kind="response_params",
+            inplace=False,
+        )
+        new_mu = expected_mu[:count]
+        np.testing.assert_allclose(
+            predicted.predictions["mean"], np.broadcast_to(new_mu, (2, 3, count, 2))
+        )
+        response_draws = model.predict(
+            params,
+            data=new_data[["x", "z"]],
+            kind="response",
+            inplace=False,
+            random_seed=131,
+        )
+        assert response_draws.predictions[response_name].shape == (2, 3, count, 2)
+        new_likelihood = model.compute_log_likelihood(params, data=new_data, inplace=False)
+        expected_new = np.array(
+            [
+                multivariate_normal.logpdf(row, mean=mu, cov=VECTOR_NORMAL_COV)
+                for row, mu in zip(new_data[["y1", "y2"]].to_numpy(), new_mu)
+            ]
+        )
+        np.testing.assert_allclose(
+            new_likelihood.log_likelihood[response_name],
+            np.broadcast_to(expected_new, (2, 3, count)),
+        )
+    np.testing.assert_array_equal(model.response_term.data, original_response)
+    from bambi.interpret.effects import predictions
+
+    summary = predictions(model, params, conditional={"x": [-0.2, 0.3], "z": [0.1]}).summary
+    actual = summary.pivot(index="x", columns=event_dim, values="estimate")
+    rate = coefficients["rate_Intercept"] + 0.1 * coefficients["rate_z"]
+    expected = rate * np.array([[-0.2], [0.3]]) + 0.1 * coefficients["z"]
+    np.testing.assert_allclose(actual[[0, 1]], expected)
+
+
+def test_nonlinear_numeric_vector_response_constant_expression():
+    from scipy.stats import multivariate_normal
+
+    data = vector_normal_data()
+    model = bmb.Model(
+        bmb.Formula("join(y1, y2) ~ 0 + nl(0.7)"),
+        data,
+        family=vector_normal_family(),
+        extra_namespace={"join": join_vector_response},
+    )
+    model.build()
+    assert not model.backend.model.free_RVs
+    result = model.predict(fixed_parameter_idata(), kind="response_params", inplace=False)
+    assert result.posterior["mu"].shape == (2, 3, len(data), 2)
+    np.testing.assert_allclose(result.posterior["mu"], 0.7)
+    likelihood = model.compute_log_likelihood(result, inplace=False)
+    expected = np.array(
+        [
+            multivariate_normal.logpdf(row, mean=[0.7, 0.7], cov=VECTOR_NORMAL_COV)
+            for row in data[["y1", "y2"]].to_numpy()
+        ]
+    )
+    np.testing.assert_allclose(
+        likelihood.log_likelihood[model.response_term.label],
+        np.broadcast_to(expected, (2, 3, len(data))),
+    )
+    draws = model.predict(result, kind="response", inplace=False, random_seed=132)
+    assert draws.posterior_predictive[model.response_term.label].shape == (2, 3, len(data), 2)
+    for count in (2, 1):
+        new_data = pd.DataFrame(index=range(count))
+        params = model.predict(result, data=new_data, kind="response_params", inplace=False)
+        assert params.predictions["mu"].shape == (2, 3, count, 2)
+        response = model.predict(
+            result,
+            data=new_data,
+            kind="response",
+            inplace=False,
+            random_seed=133,
+        )
+        assert response.predictions[model.response_term.label].shape == (2, 3, count, 2)
+
+
+@pytest.mark.parametrize(
+    ("response_ndim", "parent_ndim", "coefs_dim"),
+    [
+        (1, 2, DimType.RESPONSE),
+        (2, 1, DimType.RESPONSE),
+        (2, 2, DimType.RESPONSE),
+        (1, 1, DimType.RESPONSE_REDUCED),
+    ],
+)
+def test_nonlinear_numeric_vector_response_rejects_unsupported_axes(
+    response_ndim, parent_ndim, coefs_dim
+):
+    class UnsupportedVectorFamily(bmb.Family):
+        RESPONSE_NDIM = response_ndim
+        PARAMETERS = {"mu": ParamSpec(links=["identity"], ndim=parent_ndim, coefs_dim=coefs_dim)}
+
+    likelihood = bmb.Likelihood(
+        "VectorNormal", params=["mu"], parent="mu", dist=partial(pm.MvNormal, cov=VECTOR_NORMAL_COV)
+    )
+    family = UnsupportedVectorFamily("unsupported_vector_normal", likelihood, "identity")
+    with pytest.raises(ValueError, match="Nonlinear vector parents"):
+        bmb.Model(
+            bmb.Formula("join(y1, y2) ~ 0 + nl(0.7)"),
+            vector_normal_data(),
+            family=family,
+            extra_namespace={"join": join_vector_response},
+        )
+
+
+def test_nonlinear_numeric_vector_response_rejects_unsupported_shapes():
+    data = vector_normal_data()
+    response_formula = bmb.Formula("join(y1, y2) ~ 0 + nl(0.7)")
+    namespace = {"join": join_vector_response}
+
+    class VectorAuxiliaryFamily(bmb.Family):
+        RESPONSE_NDIM = 1
+        PARAMETERS = {
+            "mu": ParamSpec(links=["identity"], ndim=1, coefs_dim=DimType.RESPONSE),
+            "scale": ParamSpec(links=["identity"], ndim=1, coefs_dim=DimType.RESPONSE),
+        }
+
+    auxiliary_likelihood = bmb.Likelihood(
+        "VectorAuxiliaryNormal",
+        params=["mu", "scale"],
+        parent="mu",
+        dist=partial(pm.MvNormal, cov=VECTOR_NORMAL_COV),
+    )
+    auxiliary_family = VectorAuxiliaryFamily(
+        "vector_auxiliary_normal", auxiliary_likelihood, "identity"
+    )
+    with pytest.raises(ValueError, match="scalar auxiliary parameters"):
+        bmb.Model(response_formula, data, family=auxiliary_family, extra_namespace=namespace)
+
+    scalar_data = pd.DataFrame({"y": np.linspace(0, 1, len(data))})
+    with pytest.raises(ValueError, match="requires a numeric matrix response"):
+        bmb.Model(
+            "y ~ 0 + nl(0.7)",
+            scalar_data,
+            family=vector_normal_family(),
+        )
+
+
+@pytest.mark.parametrize("response", ["weighted(y1, w)", "censored(y1, status)", "counts(y1, y2)"])
+def test_nonlinear_numeric_vector_response_rejects_special_wrappers(response):
+    data = vector_normal_data().assign(w=1.0, status="none")
+    with pytest.raises(ValueError, match="requires a numeric matrix response"):
+        bmb.Model(bmb.Formula(f"{response} ~ 0 + nl(0.7)"), data, family=vector_normal_family())
+
+
+def test_nonlinear_numeric_vector_response_rejects_categorical_encoding():
+    data = pd.DataFrame({"y": pd.Categorical(["a", "b", "a"])})
+    with pytest.raises(ValueError, match="requires a numeric matrix response"):
+        bmb.Model(bmb.Formula("y ~ 0 + nl(0.7)"), data, family=vector_normal_family())
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+@pytest.mark.parametrize("sparse_dot", [False, True])
+def test_nonlinear_numeric_vector_response_group_prediction(monkeypatch, sparse_dot):
+    monkeypatch.setattr(bmb.config, "SPARSE_DOT", sparse_dot)
+    data = vector_normal_data().assign(group=["g", "h"] * 3)
+    model = bmb.Model(
+        bmb.Formula("join(y1, y2) ~ rate*x", "rate ~ 0 + z + (1 | group)", nlpars=("rate",)),
+        data,
+        family=vector_normal_family(),
+        extra_namespace={"join": join_vector_response},
+        center_predictors=False,
+    )
+    model.set_alias(
+        {
+            "mu": {"mu": "mean"},
+            "rate": {"rate": "r", "z": "slope", "1|group": "group_effect"},
+            "y1": "outcome",
+        }
+    )
+    idata = model.fit(draws=3, chains=1, random_seed=134)
+    event_dim = f"{model.response_term.name}_dim"
+    assert idata.posterior.group_effect.dims == ("chain", "draw", "group_dim", event_dim)
+    fixed_mean = 0.2 * idata.posterior.slope.values * 0.3
+    for groups in (["g", "h"], ["g"], ["new", "new"]):
+        new_data = pd.DataFrame({"x": 0.3, "z": 0.2, "group": groups})
+        result = model.predict(
+            idata, data=new_data, kind="response", inplace=False, random_seed=135
+        )
+        values = result.predictions["mean"].values
+        assert values.shape == (1, 3, len(groups), 2)
+        assert result.predictions.outcome.shape == values.shape
+        if groups[0] == "new":
+            np.testing.assert_allclose(values[:, :, 0], values[:, :, 1])
+        else:
+            effects = idata.posterior.group_effect.sel(group_dim=groups).values
+            expected = fixed_mean[:, :, None, :] + effects * 0.3
+            np.testing.assert_allclose(values, expected)
+        population = model.predict(
+            idata, data=new_data, include_group_specific=False, inplace=False
+        )
+        np.testing.assert_allclose(
+            population.predictions["mean"], np.broadcast_to(fixed_mean[:, :, None, :], values.shape)
+        )

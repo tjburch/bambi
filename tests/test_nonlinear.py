@@ -1475,6 +1475,156 @@ def test_nonlinear_vector_constant_expression(family):
         np.testing.assert_allclose(backend[parent].eval(), np.broadcast_to(expected, (count, 3)))
 
 
+def fixed_parameter_idata():
+    posterior = xr.Dataset(coords={"chain": [2, 4], "draw": [10, 11, 12]})
+    return xr.DataTree.from_dict({"posterior": posterior})
+
+
+def test_nonlinear_fixed_gaussian_prediction_and_log_likelihood():
+    data = pd.DataFrame({"x": [-1.0, 0.0, 1.0], "y": [-0.6, 0.1, 0.9]})
+    formula = bmb.Formula("y ~ 0 + nl(0.7*x)")
+    model = bmb.Model(formula, data, priors={"sigma": 0.5})
+    model.build()
+    assert not model.backend.model.free_RVs
+
+    idata = fixed_parameter_idata()
+    original_graph = model.backend.model
+    original_mu = model.backend.model["mu"].eval().copy()
+    params = model.predict(idata, kind="response_params", inplace=False)
+    assert params.posterior.coords["chain"].to_numpy().tolist() == [2, 4]
+    assert params.posterior.coords["draw"].to_numpy().tolist() == [10, 11, 12]
+    np.testing.assert_allclose(
+        params.posterior["mu"], np.broadcast_to(original_mu, (2, 3, len(data)))
+    )
+    inplace_idata = fixed_parameter_idata()
+    assert model.predict(inplace_idata, kind="response_params") is None
+    assert "mu" in inplace_idata.posterior
+    predictions = model.predict(params, kind="response", inplace=False, random_seed=109)
+    samples = predictions.posterior_predictive["y"].to_numpy()
+    assert samples.shape == (2, 3, len(data))
+    assert np.unique(samples).size > 1
+    fresh_predictions = model.predict(params, kind="response", inplace=False, random_seed=114)
+    assert not np.array_equal(samples, fresh_predictions.posterior_predictive["y"].to_numpy())
+    from scipy.stats import norm
+
+    expected_log_likelihood = norm.logpdf(data.y.to_numpy(), loc=original_mu, scale=0.5)
+    likelihood = model.compute_log_likelihood(params, inplace=False)
+    np.testing.assert_allclose(
+        likelihood.log_likelihood["y"],
+        np.broadcast_to(expected_log_likelihood, (2, 3, len(data))),
+    )
+    new_data_likelihood = model.compute_log_likelihood(params, data=data.iloc[:2], inplace=False)
+    np.testing.assert_allclose(
+        new_data_likelihood.log_likelihood["y"],
+        np.broadcast_to(expected_log_likelihood[:2], (2, 3, 2)),
+    )
+
+    for count in (2, 1):
+        new_data = data.iloc[:count][["x"]]
+        predicted_params = model.predict(
+            params, data=new_data, kind="response_params", inplace=False
+        )
+        predicted_response = model.predict(
+            params, data=new_data, kind="response", inplace=False, random_seed=110
+        )
+        assert predicted_params.predictions["mu"].shape == (2, 3, count)
+        assert predicted_response.predictions["y"].shape == (2, 3, count)
+
+    truncated_data = data.assign(lower=[-1.0, -0.5, 0.0], upper=[0.0, 0.5, 1.0])
+    truncated_model = bmb.Model(
+        bmb.Formula("truncated(y, lower, upper) ~ 0 + nl(0.7*x)"),
+        truncated_data,
+        priors={"sigma": 0.5},
+    )
+    truncated_model.build()
+    bounded = truncated_model.predict(
+        fixed_parameter_idata(), kind="response_conditional", inplace=False, random_seed=113
+    )
+    bounded_samples = bounded.posterior_predictive["y"].to_numpy()
+    assert bounded_samples.shape == (2, 3, len(data))
+    assert (bounded_samples > truncated_data.lower.to_numpy()).all()
+    assert (bounded_samples < truncated_data.upper.to_numpy()).all()
+
+    assert model.backend.model is original_graph
+    np.testing.assert_allclose(model.backend.model["mu"].eval(), original_mu)
+
+
+@pytest.mark.parametrize("family", ["categorical", "multinomial"])
+def test_nonlinear_fixed_vector_prediction_and_log_likelihood(family):
+    data = vector_parent_data()
+    response = "y" if family == "categorical" else "counts(c1, c2, c3, n=n)"
+    model = bmb.Model(bmb.Formula(f"{response} ~ 0 + nl(0.7)"), data, family=family)
+    model.set_alias({"p": {"p": "probability"}})
+    model.build()
+    assert not model.backend.model.free_RVs
+
+    idata = fixed_parameter_idata()
+    params = model.predict(idata, kind="response_params", inplace=False)
+    parent = "probability"
+    probabilities = params.posterior[parent].to_numpy()
+    assert probabilities.shape == (2, 3, len(data), 3)
+    np.testing.assert_allclose(probabilities.sum(axis=-1), 1)
+    response_prediction = model.predict(params, kind="response", inplace=False, random_seed=111)
+    samples = response_prediction.posterior_predictive[model.response_term.label].to_numpy()
+    sample_shape = (2, 3, len(data), 3) if family == "multinomial" else (2, 3, len(data))
+    assert samples.shape == sample_shape
+
+    if family == "categorical":
+        assert set(np.unique(samples)).issubset({0, 1, 2})
+        expected = np.log(probabilities[:, :, np.arange(len(data)), data.y.cat.codes])
+    else:
+        assert np.all(samples >= 0)
+        assert np.all(samples.sum(axis=-1) == data.n.to_numpy())
+        from scipy.special import gammaln
+
+        counts = data[["c1", "c2", "c3"]].to_numpy()
+        expected = (
+            gammaln(data.n.to_numpy() + 1)
+            - gammaln(counts + 1).sum(axis=-1)
+            + (counts * np.log(probabilities)).sum(axis=-1)
+        )
+
+    likelihood = model.compute_log_likelihood(params, inplace=False)
+    np.testing.assert_allclose(likelihood.log_likelihood[model.response_term.label], expected)
+
+    for count in (2, 1):
+        observed = data.iloc[:count].copy()
+        if family == "multinomial":
+            observed["n"] = np.arange(count) + 5
+            observed["c3"] = observed.n - observed.c1 - observed.c2
+        new_data = observed[["x", "z"]].copy()
+        if family == "multinomial":
+            new_data["n"] = observed.n.to_numpy()
+        predicted_params = model.predict(
+            params, data=new_data, kind="response_params", inplace=False
+        )
+        predicted_response = model.predict(
+            params, data=new_data, kind="response", inplace=False, random_seed=112
+        )
+        assert predicted_params.predictions[parent].shape == (2, 3, count, 3)
+        response_shape = (2, 3, count, 3) if family == "multinomial" else (2, 3, count)
+        assert predicted_response.predictions[model.response_term.label].shape == response_shape
+        np.testing.assert_array_equal(predicted_response.predictions.chain, [2, 4])
+        np.testing.assert_array_equal(predicted_response.predictions.draw, [10, 11, 12])
+        if family == "multinomial":
+            np.testing.assert_array_equal(
+                predicted_response.predictions[model.response_term.label].to_numpy().sum(axis=-1),
+                np.broadcast_to(observed.n.to_numpy(), (2, 3, count)),
+            )
+            counts = observed[["c1", "c2", "c3"]].to_numpy()
+            expected_new = (
+                gammaln(observed.n.to_numpy() + 1)
+                - gammaln(counts + 1).sum(axis=-1)
+                + (counts * np.log(probabilities[:, :, :count])).sum(axis=-1)
+            )
+        else:
+            expected_new = np.log(probabilities[:, :, np.arange(count), observed.y.cat.codes])
+        new_likelihood = model.compute_log_likelihood(params, data=observed, inplace=False)
+        pointwise = new_likelihood.log_likelihood[model.response_term.label]
+        assert pointwise.dims == ("chain", "draw", "__obs__")
+        np.testing.assert_allclose(pointwise, expected_new)
+
+
 @pytest.mark.usefixtures("mock_pymc_sample")
 @pytest.mark.parametrize("categories", [2, 3])
 def test_nonlinear_vector_dependencies_and_offsets(categories):

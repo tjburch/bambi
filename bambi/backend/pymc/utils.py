@@ -450,7 +450,7 @@ def create_competing_risks_dist(dist: pm.Distribution, parameter_names: list[str
     """Create the distribution of the first event among the competing causes."""
 
     def fun(*params):
-        *dist_params, _ = params
+        *dist_params, _status, _cause, _size = params
         parameters = dict(zip(parameter_names, dist_params, strict=True))
         return pt.min(dist.dist(**parameters), axis=-1)
 
@@ -472,14 +472,21 @@ def make_competing_risks_distribution(dist: pm.Distribution):
             parameter_names = [arg for arg in dist_args if arg in kwargs]
             dist_params = [kwargs.pop(arg) for arg in parameter_names]
             cr_logp = make_competing_risks_logp(dist, parameter_names)
+
+            def logp(value, *inputs):
+                *dist_params, status, cause = inputs
+                return cr_logp(value, *dist_params, status=status, cause=cause)
+
             # The symbolic distribution derives random draws automatically.
             # logp is supplied separately.
             cr_dist = create_competing_risks_dist(dist, parameter_names)
-            signature = ",".join("(cause)" for _ in parameter_names) + "->()"
+            signature = ",".join(["(cause)"] * len(parameter_names) + ["()", "()"]) + "->()"
             return pm.CustomDist(
                 name,
                 *dist_params,
-                logp=functools.partial(cr_logp, status=status, cause=cause),
+                status,
+                cause,
+                logp=logp,
                 dist=cr_dist,
                 class_name=class_name,
                 signature=signature,

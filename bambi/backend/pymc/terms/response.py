@@ -157,7 +157,11 @@ def replace_response_variables(
 
 
 def build_response_interventions(
-    term: ResponseTerm, model: pm.Model, family: Family, kind: str
+    term: ResponseTerm,
+    model: pm.Model,
+    family: Family,
+    kind: str,
+    parameter_aliases: dict[str, str] | None = None,
 ) -> dict[pt.TensorVariable, pt.TensorVariable]:
     """Build `pm.do` response interventions for posterior prediction.
 
@@ -172,7 +176,7 @@ def build_response_interventions(
         return _build_intervention_censored(term, model)
 
     if term.is_competing_risks and kind == "response_conditional":
-        return _build_intervention_competing_risks(term, model, family)
+        return _build_intervention_competing_risks(term, model, family, parameter_aliases)
 
     return {}
 
@@ -185,13 +189,17 @@ def get_response_prediction_names(term: ResponseTerm, kind: str) -> list[str]:
 
 
 def build_response_prediction_variables(
-    term: ResponseTerm, model: pm.Model, family: Family, kind: str
+    term: ResponseTerm,
+    model: pm.Model,
+    family: Family,
+    kind: str,
+    parameter_aliases: dict[str, str] | None = None,
 ) -> None:
     """Add posterior-predictive variables that differ from the observed response."""
     if not term.is_competing_risks or kind != "time_and_cause":
         return
 
-    latent_times = _get_competing_risks_base_dist(model, family)
+    latent_times = _get_competing_risks_base_dist(model, family, parameter_aliases)
 
     obs_dims = tuple(model.named_vars_to_dims[term.label])
     with model:
@@ -284,10 +292,15 @@ def _build_intervention_uncensored(
     return {response: response.owner.inputs[0]}
 
 
-def _get_competing_risks_base_dist(model: pm.Model, family: Family) -> pt.TensorVariable:
+def _get_competing_risks_base_dist(
+    model: pm.Model, family: Family, parameter_aliases: dict[str, str] | None = None
+) -> pt.TensorVariable:
     """Build the cause-specific latent event-time distribution."""
     distribution = get_distribution_from_likelihood(family.likelihood)
-    parameters = {name: model[name] for name in family.likelihood.params}
+    parameter_aliases = parameter_aliases or {}
+    parameters = {
+        name: model[parameter_aliases.get(name, name)] for name in family.likelihood.params
+    }
     transform_parameters = transforms_registry.get_parameter_transform(family)
     if transform_parameters is not None:
         parameters = transform_parameters(parameters)
@@ -295,7 +308,10 @@ def _get_competing_risks_base_dist(model: pm.Model, family: Family) -> pt.Tensor
 
 
 def _build_intervention_competing_risks(
-    term: ResponseTerm, model: pm.Model, family: Family
+    term: ResponseTerm,
+    model: pm.Model,
+    family: Family,
+    parameter_aliases: dict[str, str] | None = None,
 ) -> dict[pt.TensorVariable, pt.TensorVariable]:
     """Condition a competing-risks response on its observed censoring status."""
     response = model[term.label]
@@ -303,7 +319,9 @@ def _build_intervention_competing_risks(
     observed = model[call_args["y"] + "_data"]
     status = model[call_args["status"] + "_data"]
     lower = pt.shape_padright(pt.switch(pt.eq(status, 1), observed, -np.inf))
-    latent_times = pm.Truncated.dist(_get_competing_risks_base_dist(model, family), lower=lower)
+    latent_times = pm.Truncated.dist(
+        _get_competing_risks_base_dist(model, family, parameter_aliases), lower=lower
+    )
     return {response: pt.min(latent_times, axis=-1)}
 
 

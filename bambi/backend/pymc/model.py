@@ -615,13 +615,24 @@ class PyMCModel:
             prediction_model = replace_response_variables(
                 self.spec.response_term, prediction_model, kind
             )
+            parameter_aliases = {
+                name: parameter.label for name, parameter in self.spec.parameters.items()
+            }
             interventions = build_response_interventions(
-                self.spec.response_term, prediction_model, self.spec.family, kind
+                self.spec.response_term,
+                prediction_model,
+                self.spec.family,
+                kind,
+                parameter_aliases,
             )
             if interventions:
                 prediction_model = pm.do(prediction_model, interventions)
             build_response_prediction_variables(
-                self.spec.response_term, prediction_model, self.spec.family, kind
+                self.spec.response_term,
+                prediction_model,
+                self.spec.family,
+                kind,
+                parameter_aliases,
             )
 
             if prediction_model.free_RVs:
@@ -686,12 +697,25 @@ class PyMCModel:
                     factor_plans, group_specific_state, model
                 )
 
+        parameter_aliases = {
+            name: parameter.label for name, parameter in self.spec.parameters.items()
+        }
         interventions = build_response_interventions(
-            self.spec.response_term, model, self.spec.family, kind
+            self.spec.response_term,
+            model,
+            self.spec.family,
+            kind,
+            parameter_aliases,
         )
         if interventions:
             model = pm.do(model, interventions)
-        build_response_prediction_variables(self.spec.response_term, model, self.spec.family, kind)
+        build_response_prediction_variables(
+            self.spec.response_term,
+            model,
+            self.spec.family,
+            kind,
+            parameter_aliases,
+        )
 
         if model.free_RVs:
             with _suppress_logging(), model:

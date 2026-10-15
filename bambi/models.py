@@ -352,6 +352,7 @@ class Model:
                 or self.response_term.is_censored
                 or self.response_term.is_truncated
                 or self.response_term.is_constrained
+                or self.response_term.is_competing_risks
             )
             and self.family.RESPONSE_NDIM == 0
             and self.family.get_param_spec(self.family.likelihood.parent).ndim == 0

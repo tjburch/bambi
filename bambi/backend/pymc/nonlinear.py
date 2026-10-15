@@ -148,11 +148,17 @@ def build_nonlinear_parameter(
 
     spec = nonlinear_predictor_spec(parameter, family)
     dims = nonlinear_predictor_dims(spec, model)
-    # Observation vectors need a trailing category axis before elementwise arithmetic.
+    # Align observation and response vectors before elementwise arithmetic.
     if spec.ndim:
-        values = {
-            name: value[:, None] if value.ndim == 1 else value for name, value in values.items()
-        }
+        response_dims = set(model.__bambi_attrs__["response_coords"])
+        for name, value in values.items():
+            if value.ndim != 1:
+                continue
+            value_dims = model.named_vars_to_dims.get(value.name, ())
+            if "__obs__" in value_dims:
+                values[name] = value[:, None]
+            elif response_dims.intersection(value_dims):
+                values[name] = value[None, :]
     value = _broadcast_predictor(
         additive_value + evaluate_expression(parameter.expression.root, values), dims, model
     )

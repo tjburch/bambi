@@ -81,9 +81,10 @@ class Model:
         A model description written using the formula syntax from the `formulae` library.
         Declare nonlinear coefficient names through `Formula.nlpars`. Use `nl(...)` for explicit
         arithmetic contributions, which can also contain only observed data. Nonlinear formulas
-        support weighted and censored responses for families that support the corresponding
-        ordinary formulas and have scalar responses and scalar parent parameters. For weighted
-        responses, new-data predictions use unit weights unless a weight column is supplied.
+        support weighted, censored, truncated, and constrained responses when the family supports
+        the corresponding ordinary formula and has a scalar response and scalar parent parameter.
+        For weighted responses, new-data predictions use unit weights unless a weight column is
+        supplied.
     data : pd.DataFrame
         A pandas dataframe containing the data on which the model will be fit, with column
         names matching variables defined in the formula.
@@ -311,7 +312,12 @@ class Model:
         # Add response
         self.response_term = ResponseTerm(design.response)
         supported_scalar_response = (
-            (self.response_term.is_weighted or self.response_term.is_censored)
+            (
+                self.response_term.is_weighted
+                or self.response_term.is_censored
+                or self.response_term.is_truncated
+                or self.response_term.is_constrained
+            )
             and self.family.RESPONSE_NDIM == 0
             and self.family.get_param_spec(self.family.likelihood.parent).ndim == 0
         )

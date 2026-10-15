@@ -150,7 +150,7 @@ def replace_response_variables(
     term: ResponseTerm, model: pm.Model, kind: str | None = None
 ) -> pm.Model:
     """Apply response-variable replacements required by the current cloned data."""
-    if term.is_truncated and kind == "response":
+    if term.is_truncated and kind in ("response", "response_params"):
         return _untruncate_response(term.label, model)
 
     return model
@@ -537,7 +537,7 @@ def _build_new_truncated_data(
                 "Use kind='response' for unconditional predictions."
             )
 
-    if purpose == "prediction" and kind == "response":
+    if purpose == "prediction" and kind in ("response", "response_params"):
         return {value_name + "_data": np.full(n, term.data[0, 0])}
 
     # Re-evaluate the response call so transformed values and bounds stay consistent.

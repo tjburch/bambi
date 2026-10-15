@@ -10,7 +10,7 @@ from bambi.backend.pymc.transform import transforms_registry
 from bambi.backend.pymc.utils import INVERSE_LINKS
 from bambi.families import Family
 from bambi.families.types import ParamSpec
-from bambi.parameters import Conditional, ConditionalParameter
+from bambi.parameters import Conditional, ConditionalCoefficient, ConditionalParameter
 from bambi.nonlinear import (
     BinaryOperation,
     FUNCTION_ALIASES,
@@ -75,15 +75,16 @@ def nonlinear_data_name(parameter_label: str, symbol: str) -> str:
     return f"{parameter_label}__{symbol}_data"
 
 
-def nonlinear_predictor_spec(parameter: Conditional, family: Family) -> ParamSpec:
+def nonlinear_predictor_spec(
+    parameter: ConditionalParameter | ConditionalCoefficient, family: Family
+) -> ParamSpec:
     """Use family coefficient dimensions without applying a likelihood transformation."""
-    name = (
-        parameter.name if isinstance(parameter, ConditionalParameter) else family.likelihood.parent
-    )
-    spec = family.get_param_spec(name)
-    return ParamSpec(
-        links=["identity"], ndim=int(spec.coefs_dim is not None), coefs_dim=spec.coefs_dim
-    )
+    if isinstance(parameter, ConditionalParameter):
+        spec = family.get_param_spec(parameter.name)
+        coefs_dim = spec.coefs_dim
+    else:
+        coefs_dim = parameter.get_coefs_dim()
+    return ParamSpec(links=["identity"], ndim=int(coefs_dim is not None), coefs_dim=coefs_dim)
 
 
 def nonlinear_predictor_dims(spec: ParamSpec, model: pm.Model) -> tuple[str, ...]:

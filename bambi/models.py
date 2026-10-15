@@ -78,15 +78,8 @@ class Model:
     Parameters
     ----------
     formula : str or Formula
-        A model description written using the formula syntax from the `formulae` library.
-        Declare nonlinear coefficient names through `Formula.nlpars`. Use `nl(...)` for explicit
-        arithmetic contributions, which can also contain only observed data. Nonlinear formulas
-        support weighted, censored, truncated, and constrained responses when the family supports
-        the corresponding ordinary formula and has a scalar response and scalar parent parameter.
-        Custom numeric vector responses are supported with one response dimension, a vector parent
-        indexed by the response, and scalar auxiliary parameters.
-        For weighted responses, new-data predictions use unit weights unless a weight column is
-        supplied.
+        A model description written using one or more model formulas. See `Formula` for
+        formula syntax and nonlinear coefficient semantics.
     data : pd.DataFrame
         A pandas dataframe containing the data on which the model will be fit, with column
         names matching variables defined in the formula.
@@ -227,38 +220,7 @@ class Model:
         numeric_vector_family = False
         if self.formula.is_nonlinear:
             ordinal_family = isinstance(self.family, ORDINAL_FAMILIES)
-            vector_family = isinstance(
-                self.family, (Categorical, Multinomial, DirichletMultinomial)
-            )
-            parent_spec = self.family.get_param_spec(self.family.likelihood.parent)
-            auxiliary_specs = [
-                self.family.get_param_spec(name) for name in self.family.auxiliary_parameters
-            ]
-            numeric_vector_family = (
-                not vector_family
-                and not ordinal_family
-                and self.family.DATA_TYPE == ResponseType.NUMERIC
-                and self.family.RESPONSE_NDIM == 1
-                and parent_spec.ndim == 1
-                and parent_spec.coefs_dim == DimType.RESPONSE
-                and all(spec.ndim == 0 for spec in auxiliary_specs)
-            )
-            if parent_spec.ndim != 0 and not (
-                vector_family or ordinal_family or numeric_vector_family
-            ):
-                raise ValueError(
-                    "Nonlinear vector parents are supported only for categorical, multinomial, "
-                    "dirichlet_multinomial, ordinal, and numeric vector families with one "
-                    "response axis and scalar auxiliary parameters."
-                )
-            if self.family.RESPONSE_NDIM != 0 and not (
-                vector_family or ordinal_family or numeric_vector_family
-            ):
-                raise ValueError(
-                    "Nonlinear formulas currently require one observed response or a proportion "
-                    "response; custom numeric vector families need one response axis and scalar "
-                    "auxiliary parameters."
-                )
+            numeric_vector_family = self._validate_nonlinear_family()
 
             if ordinal_family:
                 auxiliary_formulas = self.family.auxiliary_parameters & set(
@@ -369,55 +331,8 @@ class Model:
 
         # Add response
         self.response_term = ResponseTerm(design.response)
-        scalar_response_wrapper = (
-            self.response_term.is_weighted
-            or self.response_term.is_censored
-            or self.response_term.is_truncated
-            or self.response_term.is_constrained
-            or self.response_term.is_competing_risks
-        )
-        supported_scalar_response = (
-            scalar_response_wrapper
-            and self.family.RESPONSE_NDIM == 0
-            and self.family.get_param_spec(self.family.likelihood.parent).ndim == 0
-        )
-        supported_numeric_vector_response = (
-            numeric_vector_family
-            and np.issubdtype(self.response_term.data.dtype, np.number)
-            and self.response_term.data.ndim == 2
-            and not scalar_response_wrapper
-            and not self.response_term.is_binomial
-            and not self.response_term.is_counts
-            and not self.response_term.categorical
-        )
-        if numeric_vector_family and not supported_numeric_vector_response:
-            raise ValueError(
-                "This nonlinear family requires a numeric matrix response with one response "
-                "dimension and scalar auxiliary parameters."
-            )
-        supported_multicolumn_response = (
-            supported_scalar_response
-            or supported_numeric_vector_response
-            or self.response_term.is_binomial
-            or (
-                self.response_term.categorical
-                and isinstance(self.family, (Categorical, *ORDINAL_FAMILIES))
-            )
-            or (
-                self.response_term.is_counts
-                and isinstance(self.family, (Multinomial, DirichletMultinomial))
-            )
-        )
-        if (
-            self.formula.is_nonlinear
-            and self.response_term.data.ndim != 1
-            and not supported_multicolumn_response
-        ):
-            raise ValueError(
-                "Nonlinear formulas currently require one observed response or a proportion "
-                "response; custom numeric vector responses need a vector parent and scalar "
-                "auxiliary parameters."
-            )
+        if self.formula.is_nonlinear:
+            self._validate_nonlinear_response(numeric_vector_family)
         self._response_component = _ResponseComponentAdapter(
             self.response_term, design.response, self
         )
@@ -541,6 +456,9 @@ class Model:
 
         if self.formula.is_nonlinear:
             self.parameter_graph.nodes.update(self.parameters | nonlinear_coefficients)
+            for coefficient in nonlinear_coefficients.values():
+                if isinstance(coefficient, ConditionalCoefficient):
+                    coefficient.get_coefs_dim()
 
         # Validate prior names, now that every component and its terms are known.
         self._check_prior_names(priors)
@@ -557,6 +475,87 @@ class Model:
 
         # Build priors
         self._build_priors()
+
+    def _validate_nonlinear_family(self):
+        """Validate predictor dimensions and identify custom numeric vector families."""
+        ordinal_family = isinstance(self.family, ORDINAL_FAMILIES)
+        vector_family = isinstance(self.family, (Categorical, Multinomial, DirichletMultinomial))
+        parent_spec = self.family.get_param_spec(self.family.likelihood.parent)
+        auxiliary_specs = [
+            self.family.get_param_spec(name) for name in self.family.auxiliary_parameters
+        ]
+        numeric_vector_family = (
+            not vector_family
+            and not ordinal_family
+            and self.family.DATA_TYPE == ResponseType.NUMERIC
+            and self.family.RESPONSE_NDIM == 1
+            and parent_spec.ndim == 1
+            and parent_spec.coefs_dim == DimType.RESPONSE
+            and all(spec.ndim == 0 for spec in auxiliary_specs)
+        )
+        if parent_spec.ndim != 0 and not (vector_family or ordinal_family or numeric_vector_family):
+            raise ValueError(
+                "Nonlinear vector parents are supported only for categorical, multinomial, "
+                "dirichlet_multinomial, ordinal, and numeric vector families with one "
+                "response axis and scalar auxiliary parameters."
+            )
+        if self.family.RESPONSE_NDIM != 0 and not (
+            vector_family or ordinal_family or numeric_vector_family
+        ):
+            raise ValueError(
+                "Nonlinear formulas currently require one observed response or a proportion "
+                "response; custom numeric vector families need one response axis and scalar "
+                "auxiliary parameters."
+            )
+        return numeric_vector_family
+
+    def _validate_nonlinear_response(self, numeric_vector_family):
+        """Validate response encoding separately from likelihood parameter dimensions."""
+        scalar_response_wrapper = (
+            self.response_term.is_weighted
+            or self.response_term.is_censored
+            or self.response_term.is_truncated
+            or self.response_term.is_constrained
+            or self.response_term.is_competing_risks
+        )
+        supported_scalar_response = (
+            scalar_response_wrapper
+            and self.family.RESPONSE_NDIM == 0
+            and self.family.get_param_spec(self.family.likelihood.parent).ndim == 0
+        )
+        supported_numeric_vector_response = (
+            numeric_vector_family
+            and np.issubdtype(self.response_term.data.dtype, np.number)
+            and self.response_term.data.ndim == 2
+            and not scalar_response_wrapper
+            and not self.response_term.is_binomial
+            and not self.response_term.is_counts
+            and not self.response_term.categorical
+        )
+        if numeric_vector_family and not supported_numeric_vector_response:
+            raise ValueError(
+                "This nonlinear family requires a numeric matrix response with one response "
+                "dimension and scalar auxiliary parameters."
+            )
+        supported_multicolumn_response = (
+            supported_scalar_response
+            or supported_numeric_vector_response
+            or self.response_term.is_binomial
+            or (
+                self.response_term.categorical
+                and isinstance(self.family, (Categorical, *ORDINAL_FAMILIES))
+            )
+            or (
+                self.response_term.is_counts
+                and isinstance(self.family, (Multinomial, DirichletMultinomial))
+            )
+        )
+        if self.response_term.data.ndim != 1 and not supported_multicolumn_response:
+            raise ValueError(
+                "Nonlinear formulas currently require one observed response or a proportion "
+                "response; custom numeric vector responses need a vector parent and scalar "
+                "auxiliary parameters."
+            )
 
     def _make_nonlinear_parameter_expressions(self):
         """Parse expressions that define parameters in terms of other modeled parameters."""

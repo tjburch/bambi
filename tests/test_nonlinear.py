@@ -586,12 +586,339 @@ def test_nonlinear_coefficient_alias():
     assert "a_Intercept" not in model.backend.model.named_vars
 
 
-@pytest.mark.parametrize("family", ["cumulative", "sratio", "cratio", "acat", "osm"])
-def test_nonlinear_ordinal_parent_is_rejected(family):
-    formula = bmb.Formula("y ~ rate * x", nlpars=("rate",))
+def ordinal_nonlinear_data():
+    return pd.DataFrame(
+        {
+            "y": pd.Categorical(
+                ["low", "mid", "high", "low", "mid", "high"],
+                categories=["low", "mid", "high"],
+                ordered=True,
+            ),
+            "x": [-1.0, -0.4, 0.0, 0.2, 0.7, 1.3],
+            "z": [0.0, 1.0, 0.2, -0.4, 0.3, 1.1],
+        }
+    )
 
-    with pytest.raises(ValueError, match="ordinal predictors remain unsupported"):
-        bmb.Model(formula, linear_data(), family=family)
+
+def ordinal_probabilities(family, eta, threshold, alpha=None, delta=None, link="logit"):
+    from scipy.special import softmax
+
+    inverse_link = ndtr if link == "probit" else expit
+    eta = np.asarray(eta)[..., None]
+    if family == "cumulative":
+        cumulative = inverse_link(threshold - eta)
+        return np.concatenate(
+            [cumulative[..., :1], np.diff(cumulative, axis=-1), 1 - cumulative[..., -1:]],
+            axis=-1,
+        )
+    if family in ("sratio", "cratio"):
+        if family == "sratio":
+            stop = inverse_link(threshold - eta)
+            survive = 1 - stop
+        else:
+            survive = inverse_link(eta - threshold)
+            stop = 1 - survive
+        survival = np.cumprod(survive, axis=-1)
+        return np.concatenate(
+            [stop[..., :1], stop[..., 1:] * survival[..., :-1], survival[..., -1:]],
+            axis=-1,
+        )
+    if family == "acat":
+        log_odds = eta - threshold
+        log_weights = np.concatenate(
+            [np.zeros_like(log_odds[..., :1]), np.cumsum(log_odds, axis=-1)], axis=-1
+        )
+        return softmax(log_weights, axis=-1)
+    phi = np.r_[0, np.cumsum(delta[:-1]), 1]
+    intercepts = np.r_[0, alpha]
+    return softmax(intercepts + eta * phi, axis=-1)
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+@pytest.mark.parametrize(
+    ("family", "link"),
+    [
+        ("cumulative", "logit"),
+        ("cumulative", "probit"),
+        ("sratio", "logit"),
+        ("cratio", "logit"),
+        ("acat", "logit"),
+        ("osm", "logit"),
+    ],
+)
+def test_nonlinear_ordinal_parent_matches_pymc_and_predicts(family, link):
+    data = ordinal_nonlinear_data()
+    priors = {}
+    if family == "osm":
+        priors = {
+            "alpha": bmb.Prior("Normal", mu=0, sigma=1),
+            "delta": bmb.Prior("Dirichlet", a=np.ones(2)),
+        }
+    else:
+        threshold_prior = {"mu": 0, "sigma": 1}
+        if family == "cumulative":
+            threshold_prior["transform"] = "ordered"
+        priors = {"threshold": bmb.Prior("Normal", **threshold_prior)}
+
+    priors["rate"] = bmb.Prior("Normal", mu=0.4, sigma=0.2)
+    model = bmb.Model(
+        bmb.Formula("y ~ nl(rate*x)", "rate ~ 1", nlpars=("rate",)),
+        data,
+        family=family,
+        link=link,
+        priors=priors,
+    )
+    model.build()
+    backend = model.backend.model
+    rate_value = 0.4
+    threshold_value = np.array([-0.8, 0.7])
+    alpha_value = np.array([0.2, -0.35])
+    delta_value = np.array([0.3, 0.7])
+    values = (
+        {"rate": rate_value, "alpha": alpha_value, "delta": delta_value}
+        if family == "osm"
+        else {"rate": rate_value, "threshold": threshold_value}
+    )
+    fixed_parent = backend.compile_fn(
+        backend["p"], inputs=backend.free_RVs, on_unused_input="ignore"
+    )(values)
+    eta = rate_value * data.x.to_numpy()
+    expected = ordinal_probabilities(
+        family,
+        eta,
+        threshold_value,
+        alpha=alpha_value,
+        delta=delta_value,
+        link=link,
+    )
+    np.testing.assert_allclose(fixed_parent, expected)
+
+    with pm.Model() as direct:
+        rate = pm.Normal("rate", 0.4, 0.2)
+        eta_tensor = rate * data.x.to_numpy()
+        if family == "osm":
+            alpha = pm.Normal("alpha", 0, 1, shape=2)
+            delta = pm.Dirichlet("delta", a=np.ones(2))
+            phi = pt.concatenate([pt.zeros((1,)), pt.cumsum(delta[:-1]), pt.ones((1,))])
+            intercepts = pt.concatenate([pt.zeros((1,)), alpha])
+            probabilities = pt.special.softmax(intercepts + eta_tensor[:, None] * phi, axis=-1)
+        else:
+            transform = pm.distributions.transforms.ordered if family == "cumulative" else None
+            threshold = pm.Normal("threshold", 0, 1, shape=2, transform=transform)
+            if family == "cumulative":
+                cumulative = (
+                    pt.erfc(-(threshold[None, :] - eta_tensor[:, None]) / np.sqrt(2)) / 2
+                    if link == "probit"
+                    else pm.math.sigmoid(threshold[None, :] - eta_tensor[:, None])
+                )
+                probabilities = pt.concatenate(
+                    [
+                        cumulative[:, :1],
+                        cumulative[:, 1:] - cumulative[:, :-1],
+                        1 - cumulative[:, -1:],
+                    ],
+                    axis=-1,
+                )
+            elif family in ("sratio", "cratio"):
+                linear = (
+                    threshold[None, :] - eta_tensor[:, None]
+                    if family == "sratio"
+                    else eta_tensor[:, None] - threshold[None, :]
+                )
+                success = (
+                    pt.erfc(-linear / np.sqrt(2)) / 2
+                    if link == "probit"
+                    else pm.math.sigmoid(linear)
+                )
+                if family == "sratio":
+                    survival = 1 - success
+                    cumulative_survival = pt.cumprod(survival, axis=-1)
+                    probabilities = pt.concatenate(
+                        [
+                            success[:, :1],
+                            success[:, 1:] * cumulative_survival[:, :-1],
+                            cumulative_survival[:, -1:],
+                        ],
+                        axis=-1,
+                    )
+                else:
+                    stop = 1 - success
+                    survival = pt.cumprod(success, axis=-1)
+                    probabilities = pt.concatenate(
+                        [stop[:, :1], stop[:, 1:] * survival[:, :-1], survival[:, -1:]],
+                        axis=-1,
+                    )
+            else:
+                log_odds = eta_tensor[:, None] - threshold[None, :]
+                log_weights = pt.concatenate(
+                    [pt.zeros((len(data), 1)), pt.cumsum(log_odds, axis=-1)], axis=-1
+                )
+                probabilities = pt.special.softmax(log_weights, axis=-1)
+        pm.Categorical("y", p=probabilities, observed=data.y.cat.codes)
+
+    bambi_point = backend.initial_point()
+    direct_point = direct.initial_point()
+    if family == "cumulative":
+        bambi_point["threshold_ordered__"] = np.array([-0.8, np.log(1.5)])
+        direct_point["threshold_ordered__"] = bambi_point["threshold_ordered__"]
+    elif family == "osm":
+        bambi_point["alpha"] = alpha_value
+        direct_point["alpha"] = alpha_value
+        bambi_point["delta_simplex__"] = np.array([0.5 * np.log(0.3 / 0.7)])
+        direct_point["delta_simplex__"] = bambi_point["delta_simplex__"]
+    else:
+        bambi_point["threshold"] = threshold_value
+        direct_point["threshold"] = threshold_value
+    bambi_point["rate"] = rate_value
+    direct_point["rate"] = rate_value
+    assert bambi_point.keys() == direct_point.keys()
+    assert np.isfinite(backend.compile_logp()(bambi_point))
+    assert np.isfinite(direct.compile_logp()(direct_point))
+    np.testing.assert_allclose(
+        backend.compile_logp()(bambi_point), direct.compile_logp()(direct_point)
+    )
+
+    idata = model.fit(draws=3, chains=2)
+    posterior = idata.posterior.to_dataset().copy(deep=True)
+    for name, value in values.items():
+        posterior[name] = posterior[name].copy(data=np.broadcast_to(value, posterior[name].shape))
+    idata["posterior"] = posterior
+    parameter_prediction = model.predict(idata, kind="response_params", inplace=False)
+    expected_draws = np.broadcast_to(expected, (2, 3, len(data), 3))
+    np.testing.assert_allclose(parameter_prediction.posterior["p"], expected_draws)
+    assert np.isfinite(expected_draws).all()
+    assert (expected_draws > 0).all()
+    log_likelihood = model.compute_log_likelihood(idata, inplace=False)
+    expected_log_likelihood = np.log(expected_draws[:, :, np.arange(len(data)), data.y.cat.codes])
+    np.testing.assert_allclose(log_likelihood.log_likelihood["y"], expected_log_likelihood)
+    in_sample = model.predict(idata, kind="response", inplace=False, random_seed=114)
+    assert in_sample.posterior_predictive["y"].shape == (2, 3, len(data))
+    for count in (2, 1):
+        new_data = data.iloc[:count]
+        params = model.predict(idata, data=new_data[["x"]], kind="response_params", inplace=False)
+        prediction = model.predict(
+            idata, data=new_data[["x"]], kind="response", inplace=False, random_seed=114
+        )
+        np.testing.assert_allclose(params.predictions["p"], expected_draws[:, :, :count])
+        samples = prediction.predictions["y"]
+        assert samples.shape == (2, 3, count)
+        assert set(np.unique(samples)).issubset({0, 1, 2})
+        out_of_sample_log_likelihood = model.compute_log_likelihood(
+            idata, data=new_data, inplace=False
+        )
+        np.testing.assert_allclose(
+            out_of_sample_log_likelihood.log_likelihood["y"], expected_log_likelihood[:, :, :count]
+        )
+
+    if family == "cumulative" and link == "logit":
+        from bambi.interpret.effects import predictions, slopes
+
+        summary = predictions(model, idata, conditional={"x": [-0.2, 0.3]}).summary
+        assert set(summary.y_dim) == {"low", "mid", "high"}
+        np.testing.assert_allclose(summary.groupby("x").estimate.sum(), 1)
+        slope_summary = slopes(model, idata, wrt={"x": 0.2}).summary
+        assert np.isfinite(slope_summary.estimate).all()
+        np.testing.assert_allclose(slope_summary.estimate.sum(), 0, atol=1e-8)
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+@pytest.mark.parametrize("family", ["cumulative", "sratio", "cratio", "acat", "osm"])
+def test_nonlinear_ordinal_binary_constant_expression(family):
+    data = ordinal_nonlinear_data()
+    data = data[data.y != "high"].copy()
+    data["y"] = data.y.cat.remove_unused_categories()
+    model = bmb.Model(bmb.Formula("y ~ 0 + nl(0.4)"), data, family=family)
+    model.build()
+    backend = model.backend.model
+    values = {"alpha": np.array([0.2])} if family == "osm" else {"threshold": np.array([0.3])}
+    actual = backend.compile_fn(backend["p"], inputs=backend.free_RVs)(values)
+    expected = ordinal_probabilities(
+        family, np.full(len(data), 0.4), np.array([0.3]), alpha=np.array([0.2]), delta=np.ones(1)
+    )
+    np.testing.assert_allclose(actual, expected)
+    idata = model.fit(draws=2, chains=1, random_seed=115)
+    for count in (2, 1):
+        result = model.predict(
+            idata,
+            data=pd.DataFrame(index=range(count)),
+            kind="response",
+            inplace=False,
+            random_seed=116,
+        )
+        assert result.predictions.p.shape == (1, 2, count, 2)
+        np.testing.assert_allclose(result.predictions.p.sum(axis=-1), 1)
+        assert np.isfinite(result.predictions.p).all()
+        assert set(np.unique(result.predictions.y)).issubset({0, 1})
+
+
+@pytest.mark.usefixtures("mock_pymc_sample")
+@pytest.mark.parametrize("sparse_dot", [False, True])
+@pytest.mark.parametrize("family", ["cumulative", "osm"])
+def test_nonlinear_ordinal_mixed_group_prediction(monkeypatch, sparse_dot, family):
+    monkeypatch.setattr(bmb.config, "SPARSE_DOT", sparse_dot)
+    data = ordinal_nonlinear_data().assign(
+        category=pd.Categorical(["a", "b"] * 3), group=["g", "h"] * 3
+    )
+    formula = bmb.Formula(
+        "y ~ 1 + category + nl(rate*x)", "rate ~ 1 + z + (1 | group)", nlpars=("rate",)
+    )
+    with pytest.warns(UserWarning, match="intercept is omitted"):
+        model = bmb.Model(formula, data, family=family, center_predictors=False)
+    assert "Intercept" not in model.parameters["p"].terms
+    model.set_alias(
+        {
+            "p": {"p": "probability", "category": "category_effect"},
+            "rate": {"Intercept": "rate0", "z": "slope", "1|group": "group_effect"},
+        }
+    )
+    idata = model.fit(draws=3, chains=1, random_seed=117)
+    posterior = idata.posterior.to_dataset().copy(deep=True)
+    auxiliary = (
+        {"alpha": np.array([0.2, -0.35]), "delta": np.array([0.3, 0.7])}
+        if family == "osm"
+        else {"threshold": np.array([-0.8, 0.7])}
+    )
+    for name, value in auxiliary.items():
+        posterior[name] = posterior[name].copy(data=np.broadcast_to(value, posterior[name].shape))
+    idata["posterior"] = posterior
+    assert posterior.rate0.dims == ("chain", "draw")
+    assert posterior.category_effect.shape == (1, 3, 1)
+    assert posterior.group_effect.dims == ("chain", "draw", "group_dim")
+    fixed_eta = posterior.rate0.values + 0.2 * posterior.slope.values
+    additive_eta = posterior.category_effect.values[..., 0]
+    for groups in (["g", "h"], ["g"], ["new", "new"]):
+        new_data = pd.DataFrame({"x": 0.3, "z": 0.2, "category": "b", "group": groups})
+        result = model.predict(idata, data=new_data, inplace=False, random_seed=118)
+        values = result.predictions.probability.values
+        assert values.shape == (1, 3, len(groups), 3)
+        np.testing.assert_allclose(values.sum(axis=-1), 1)
+        assert (values >= 0).all()
+        if groups[0] == "new":
+            np.testing.assert_allclose(values[:, :, 0], values[:, :, 1])
+        else:
+            effects = posterior.group_effect.sel(group_dim=groups).values
+            eta = additive_eta[..., None] + (fixed_eta[..., None] + effects) * 0.3
+            expected = ordinal_probabilities(
+                family,
+                eta,
+                np.array([-0.8, 0.7]),
+                alpha=np.array([0.2, -0.35]),
+                delta=np.array([0.3, 0.7]),
+            )
+            np.testing.assert_allclose(values, expected)
+        population = model.predict(
+            idata, data=new_data, include_group_specific=False, inplace=False
+        )
+        expected = ordinal_probabilities(
+            family,
+            additive_eta[..., None] + fixed_eta[..., None] * 0.3,
+            np.array([-0.8, 0.7]),
+            alpha=np.array([0.2, -0.35]),
+            delta=np.array([0.3, 0.7]),
+        )
+        np.testing.assert_allclose(
+            population.predictions.probability, np.broadcast_to(expected, values.shape)
+        )
 
 
 def test_non_proportion_multicolumn_response_is_rejected():

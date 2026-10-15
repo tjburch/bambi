@@ -2192,14 +2192,34 @@ def test_scalar_transform_result_broadcasts_for_prediction(monkeypatch, transfor
         np.testing.assert_array_equal(group.mu.values, np.ones((1, 1, size)))
 
 
-@pytest.mark.parametrize("family", ["cumulative", "sratio"])
-def test_ordinal_nonlinear_predictors_remain_rejected(family):
-    with pytest.raises(ValueError, match="ordinal predictors remain unsupported"):
-        bmb.Model(
-            bmb.Formula("y ~ a * x", nlpars=("a",)),
-            pd.DataFrame({"y": [0, 1, 2], "x": [0, 1, 2]}),
-            family=family,
-        )
+@pytest.mark.parametrize(
+    ("family", "auxiliary"),
+    [("cumulative", "threshold"), ("osm", "alpha"), ("osm", "delta")],
+)
+def test_ordinal_nonlinear_auxiliary_formulas_are_rejected(family, auxiliary):
+    data = pd.DataFrame(
+        {
+            "y": pd.Categorical(["low", "mid", "high"], ordered=True),
+            "x": [0, 1, 2],
+        }
+    )
+    formula = bmb.Formula("y ~ nl(rate*x)", f"{auxiliary} ~ 1", nlpars=("rate",))
+
+    with pytest.raises(ValueError, match="Ordinal auxiliary parameters"):
+        bmb.Model(formula, data, family=family)
+
+
+def test_ordinal_nonlinear_expressions_cannot_depend_on_threshold():
+    data = pd.DataFrame(
+        {
+            "y": pd.Categorical(["low", "mid", "high"], ordered=True),
+            "x": [0, 1, 2],
+        }
+    )
+    formula = bmb.Formula("y ~ nl(threshold*x)")
+
+    with pytest.raises(ValueError, match="cannot depend on vector-valued auxiliary"):
+        bmb.Model(formula, data, family="cumulative")
 
 
 @pytest.mark.parametrize("family, inverse_link", [("gaussian", lambda x: x), ("poisson", np.exp)])

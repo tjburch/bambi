@@ -223,19 +223,29 @@ class Model:
 
         ## Main parameter
         if self.formula.is_nonlinear:
+            ordinal_family = isinstance(self.family, ORDINAL_FAMILIES)
             vector_family = isinstance(
                 self.family, (Categorical, Multinomial, DirichletMultinomial)
             )
-            if self.family.RESPONSE_NDIM != 0 and not vector_family:
+            if self.family.RESPONSE_NDIM != 0 and not (vector_family or ordinal_family):
                 raise ValueError("Nonlinear formulas currently require a univariate response.")
-            if (
-                self.family.get_param_spec(self.family.likelihood.parent).ndim != 0
-                and not vector_family
+            if self.family.get_param_spec(self.family.likelihood.parent).ndim != 0 and not (
+                vector_family or ordinal_family
             ):
                 raise ValueError(
                     "Nonlinear vector parents are supported only for categorical, multinomial, "
-                    "and dirichlet_multinomial families; ordinal predictors remain unsupported."
+                    "dirichlet_multinomial, and ordinal families."
                 )
+
+            if ordinal_family:
+                auxiliary_formulas = self.family.auxiliary_parameters & set(
+                    self.formula.additionals_lhs
+                )
+                if auxiliary_formulas:
+                    raise ValueError(
+                        "Ordinal auxiliary parameters cannot be modeled with additional formulas: "
+                        f"{sorted(auxiliary_formulas)}."
+                    )
 
             response_formula, _ = split_nonlinear_formula(self.formula.main)
             response_names = set(fm.model_description(response_formula).var_names)
@@ -259,6 +269,18 @@ class Model:
                     f"{sorted(collisions)}."
                 )
             self.parameter_graph = self._make_parameter_dependency_graph()
+            if ordinal_family:
+                invalid_dependencies = self.family.auxiliary_parameters & {
+                    dependency
+                    for dependencies in self.parameter_graph.dependencies.values()
+                    for dependency in dependencies
+                }
+                if invalid_dependencies:
+                    raise ValueError(
+                        "Ordinal nonlinear expressions cannot depend on vector-valued auxiliary "
+                        "parameters: "
+                        f"{sorted(invalid_dependencies)}."
+                    )
             self.data = prepare_nonlinear_data(
                 self.formula,
                 {
@@ -274,9 +296,22 @@ class Model:
             )
             if additive_rhs is not None:
                 response_formula = f"{response_formula.partition('~')[0]} ~ {additive_rhs}"
-            design = fm.design_matrices(
-                response_formula, self.data, na_action, 1, additional_namespace
-            )
+
+            if ordinal_family:
+                if additive_rhs is not None:
+                    check_ordinal_formula(Formula(response_formula))
+                design = fm.design_matrices(
+                    response_formula + " + 1",
+                    self.data,
+                    na_action,
+                    1,
+                    additional_namespace,
+                )
+                design = remove_common_intercept(design)
+            else:
+                design = fm.design_matrices(
+                    response_formula, self.data, na_action, 1, additional_namespace
+                )
         elif isinstance(self.family, ORDINAL_FAMILIES):
             self.formula = check_ordinal_formula(self.formula)
             # Notice the intercept is added so formulae constraints categorical predictors, avoiding
@@ -326,7 +361,10 @@ class Model:
             and self.response_term.data.ndim != 1
             and not supported_scalar_response
             and not self.response_term.is_binomial
-            and not (self.response_term.categorical and isinstance(self.family, Categorical))
+            and not (
+                self.response_term.categorical
+                and isinstance(self.family, (Categorical, *ORDINAL_FAMILIES))
+            )
             and not (
                 self.response_term.is_counts
                 and isinstance(self.family, (Multinomial, DirichletMultinomial))

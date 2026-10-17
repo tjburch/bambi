@@ -2,7 +2,7 @@
 
 Date: October 17, 2026. Status: **draft implementation; acceptance is incomplete**.
 
-The confirmed defects below are fixed. Eight small Gaussian posterior comparisons, six fixed-parameter glmmTMB references, and focused regressions pass. Full regression CI, repeated calibration, prior sensitivity, and representative performance acceptance have not run. No useful large-case marginalization benefit is established. Execution smoke checks are not evidence for those criteria.
+The confirmed defects below are fixed. Eight small Gaussian posterior comparisons, six fixed-parameter glmmTMB references, and focused regressions pass. GitHub CI is running. Completed and inspected results are recorded below; the full acceptance matrix is not complete. No useful large-case marginalization benefit is established. Execution smoke checks are not evidence for those criteria.
 
 ## Checkouts and environment
 
@@ -13,7 +13,7 @@ The confirmed defects below are fixed. Eight small Gaussian posterior comparison
 - Paired editable installation: `uv pip install --python .venv/bin/python --no-deps -e . -e /Volumes/T9/Projects/formulae-structured`. Release metadata has no local override. Package version strings identify the base commits, not these uncommitted source changes.
 - Initial inherited-environment failures involved readline, xarray, and h5py. Checks were rerun in the isolated environment, using h5py 3.14.0. Startup failures are not model evidence.
 
-Local commands, logs, configuration, seeds, data, truth, NetCDF draws, diagnostics, and measurements are retained in `.cache/structured-acceptance/` and `.cache/structured-covariance/`. Saved review evidence includes [posterior results](structured-covariance-posterior-results.json), [reference results](structured-covariance-reference-results.json), and [sampler execution results](structured-covariance-sampler-results.json). Publication is authorized. Formulae is published at `2fbeb11d89a67db2700557872896dea0b5c5d9ab`, with [draft PR #1](https://github.com/tjburch/formulae/pull/1). Bambi publication and CI evidence are recorded below as they become available.
+Local commands, logs, configuration, seeds, data, truth, NetCDF draws, diagnostics, and measurements are retained in `.cache/structured-acceptance/` and `.cache/structured-covariance/`. Saved review evidence includes [posterior results](structured-covariance-posterior-results.json), [reference results](structured-covariance-reference-results.json), and [sampler execution results](structured-covariance-sampler-results.json). Publication is authorized. Formulae is published at `2fbeb11d89a67db2700557872896dea0b5c5d9ab`, with [draft PR #1](https://github.com/tjburch/formulae/pull/1). Bambi is published in [draft PR #10](https://github.com/tjburch/bambi/pull/10), initially at `205730c`, with CI/reference corrections at `2eb4c5a`.
 
 ## Confirmed defects and repairs
 
@@ -34,7 +34,7 @@ For the LKJ discrepancy, at K=3 and eta=2 each correlation must have second mome
 
 | Requirement | Implemented behavior and local evidence | Pending acceptance |
 | --- | --- | --- |
-| Formulae ownership and syntax | Opt-in registered wrappers, both syntaxes, quoted/bare lists, nesting, duplicate identity, variable discovery, ordinary arithmetic isolation, and fitted coefficient designs. 162 focused Formulae regressions pass. | Full Formulae suite in PR CI; released interface. |
+| Formulae ownership and syntax | Opt-in registered wrappers, both syntaxes, quoted/bare lists, nesting, duplicate identity, variable discovery, ordinary arithmetic isolation, and fitted coefficient designs. 162 focused Formulae regressions pass. | Full Formulae suite passes in PR CI; released interface remains pending. |
 | Coordinates and data | Gaps, repeated states, declared grids, datetime elapsed units, typed composite keys, one shared missing-row mask, and useful invalid-input errors have focused tests. | Broader regression matrix. |
 | All five covariance definitions and priors | Stationary temporal kernels; coefficient basis; both CS scale variants and negative range; one-dimensional limits; proper truncation; fixed matrix/shape validation; corrected unscaled defaults and LKJ law. Dense likelihood/gradient and prior-law tests pass. | Prior-sensitivity refits and repeated prior-predictive calibration. |
 | Inference API and lifecycle | Auto dimension-based selection with qualified-name tie break, explicit selection/errors, latent fallback, build/fit switching, prior/alias invalidation, and metadata have focused tests. | Full Bambi Python/linker CI. |
@@ -145,7 +145,7 @@ Read-only Sol High reviewers received the requirements and source and independen
 
 The broader Bambi `ci.yml` matrix (Python 3.12/3.13, CVM/Numba linkers) uses the same exact paired Formulae checkout. It captures the Pixi interpreter before overriding Formulae, then invokes that interpreter directly for pre-commit, pylint, tests and coverage, preventing a later Pixi sync from replacing the paired dependency.
 
-Larger jobs run with `workflow_dispatch` extended=true or the PR body marker `<!-- structured-full-acceptance -->`. The marker allows PR validation before the workflow is present on the repository default branch, as GitHub requires for manual dispatch. Extended jobs run:
+Larger jobs run with `workflow_dispatch` extended=true or, on PR opening/description edits, the PR body marker `<!-- structured-full-acceptance -->`. Ordinary code pushes rerun bounded checks without restarting already running extended jobs. The marker allows PR validation before the workflow is present on the repository default branch, as GitHub requires for manual dispatch. Extended jobs run:
 
 - 100 independent prior-draw replications for each of seven structures, 4 serial chains and 1,500 draws/tuning. Generating kernels use dense NumPy algebra and US3 uses normalized Wishart draws independent of the backend Beta parameterization. Exact proper priors match the fitting model. Every fit must converge. Scalar parameter/state SBC ranks are conservatively thinned to at most 100 draws at roughly four estimated autocorrelation times; randomized ranks are tested for uniformity. True heldout responses at new times or numeric slopes have predictive ranks/PIT and 94% HDI coverage. Multiplicity-adjusted family-wise 99% exact binomial intervals quantify coverage uncertainty; rank tests use matching correction. MCMC ranks remain approximate and their limits must be considered during review.
 - Actual prior-scale 0.5/1/2 refits for seven structures, convergence checks, mean shifts in baseline posterior SDs, and 94% HDIs. Shifts above 0.3 SD flag prior dependence for scientific review; they are not silently called robustness or implementation failures.
@@ -155,7 +155,7 @@ CI uploads logs, JUnit, commands, exact versions/commits, host/memory informatio
 
 ## Pending external work and dependency blockers
 
-Publication is authorized. Formulae commit `2fbeb11d89a67db2700557872896dea0b5c5d9ab` is pushed to the user fork, with [draft PR #1](https://github.com/tjburch/formulae/pull/1) against the focused validation base. Bambi's initial draft and GitHub runs are the next publication steps; no successful CI evidence is claimed before artifact inspection.
+Publication is authorized. Formulae commit `2fbeb11d89a67db2700557872896dea0b5c5d9ab` is pushed to the user fork, with [draft PR #1](https://github.com/tjburch/formulae/pull/1) against the focused validation base. Bambi draft PR #10 and the GitHub runs below are published. Only inspected completed artifacts count as verified evidence.
 
 `.ci/formulae.json` now contains that exact 40-character Formulae feature commit. The checkout action rejects null, branch names and non-40-character pins. Both the broader and structured Bambi jobs use this same immutable dependency. Testing the old released Formulae or a moving branch would not satisfy paired CI.
 
@@ -163,7 +163,20 @@ For fork-local draft validation, Bambi's `main` matches the intended base. Its d
 
 The release manifest still has `formulae>=0.6,<0.7`, which does not supply the required interface. A Formulae release containing the paired extension is needed; its assigned version must determine Bambi's released minimum/range. No version has been invented. The temporary CI override must be removed when that release dependency is coordinated. This remains a merge/release blocker even if paired development CI passes.
 
-Acceptance remains pending for full Bambi/Formulae regressions, meaningful non-nutpie posterior pairs, repeated SBC/PIT/coverage, prior-sensitivity interpretation, representative performance and useful benefit, documentation build, and actual CI artifact review. There is no known unresolved confirmed implementation defect after the repairs above; these pending checks can still reveal defects and must not be waived.
+Acceptance remains pending for completion of the full Bambi regression matrix, meaningful non-nutpie posterior pairs, repeated SBC/PIT/coverage, remaining prior-sensitivity interpretation, representative performance and useful benefit, and the remaining CI artifact review. The full Formulae matrix and corrected documentation/reference jobs pass as recorded below. There is no known unresolved confirmed implementation defect after the repairs above; these pending checks can still reveal defects and must not be waived.
+
+## GitHub follow-through: partial results
+
+The [CI evidence summary](structured-covariance-ci-results.json) records inspected artifacts. Runs [39076990474](https://github.com/tjburch/bambi/actions/runs/39076990474) (initial extended acceptance), [39077354869](https://github.com/tjburch/bambi/actions/runs/39077354869) (bounded rerun after fixture/environment repairs), and the Python/linker regression runs remain in progress. The production implementation is unchanged between `205730c` and `2eb4c5a`; the latter fixes validation environments and the reference script.
+
+- Formulae [CI 39076908729](https://github.com/tjburch/formulae/actions/runs/39076908729) passes Python 3.11–3.14: 288 passed, one skipped per job, with pre-commit and pylint passing. Logs were inspected. The separate paired full-suite artifact also records 288 passed/one skipped and the exact expected Formulae commit.
+- The first full Bambi Python 3.12/CVM artifact has 530 passed, one skipped, zero failures/errors (531 collected), pytest time 499.672 seconds, pylint 10.00/10, and the expected Formulae pin. Other Python/linker jobs remain pending.
+- AR(1), OU, diagonal, both CS variants and 2D US posterior artifacts pass both convergence and MCSE agreement. These CI datasets use 12 groups, four serial chains and 2,000 draws/1,500 tuning steps. The inspected maximum pairwise z statistics are 2.58, 3.03, 1.84, 2.12, 1.53 and 2.09, below their multiplicity-adjusted thresholds. Raw draws and 94% HDI summaries were retained and selected parameter summaries inspected.
+- AR(1) prior-scale 0.5/1/2 refits converge with no shifts above 0.3 baseline posterior SD. OU refits converge; halving its SD prior scale shifts the SD mean by 0.308 baseline posterior SD, triggering the prespecified prior-dependence flag. The baseline 94% HDI [0.478, 0.844] changes to [0.473, 0.788]; doubling gives [0.492, 0.855]. This is reported as prior dependence, not an implementation failure or blanket robustness claim.
+- The initial documentation job failed because the pip-only job installed Griffe 2 while the repository constrains Griffe to 1. Applying that existing constraint fixes the rerun. The API build and guide render pass; the rendered 57,748-byte guide artifact was inspected for the new API and scaling sections.
+- The initial reference job failed before fitting: Ubuntu supplies glmmTMB 1.1.8 with `betad`/log variance, while local 1.1.11 uses `betadisp`/log SD. The fixture detects the parameter name, fixes the requested SD under the appropriate convention, and asserts SD 0.3 in Python. All six local references pass again. The corrected CI artifact on R 4.3.3/glmmTMB 1.1.8 also passes all six cases, with residual SD 0.3 and maximum absolute log-density error 1.25e-14. Failure logs and artifacts remain available.
+
+Repeated calibration, large benchmarks, remaining sampler/posterior jobs, remaining sensitivity interpretation, and full regression completion are still pending. No scientific pass is inferred from an execution-only green job.
 
 ## Earlier small timing records
 

@@ -3,6 +3,7 @@ library(jsonlite)
 
 output <- commandArgs(trailingOnly=TRUE)[1]
 dir.create(output, recursive=TRUE, showWarnings=FALSE)
+capture.output(sessionInfo(), file=file.path(output, "R-session.txt"))
 data <- data.frame(
     y=c(0.4, -0.5, 0.7, 0.1, -0.2, 0.8, NA),
     x=c(-1, 0.2, 0.8, 1.3, -0.6, 0.5, 0),
@@ -38,11 +39,17 @@ for (structure in c("ar1", "ou", "diag", "cs", "cs_homogeneous", "us")) {
         theta <- log(c(0.7, 0.4))
         if (structure == "us") theta <- c(theta, rho/sqrt(1-rho^2))
     }
+    formula <- as.formula(paste("y ~ 1+x+", expression))
+    specification <- glmmTMB(formula, data=data, doFit=FALSE, na.action=na.pass)
+    dispersion <- intersect(c("betadisp", "betad"), names(specification$parameters))
+    stopifnot(length(dispersion) == 1)
+    start <- list(beta=beta, theta=theta)
+    map <- list(beta=factor(rep(NA, 2)), theta=factor(rep(NA, length(theta))))
+    # betad uses log variance; betadisp uses log standard deviation for Gaussian models.
+    start[[dispersion]] <- log(sigma) * if (dispersion == "betad") 2 else 1
+    map[[dispersion]] <- factor(NA)
     fit <- glmmTMB(
-        as.formula(paste("y ~ 1+x+", expression)), data=data,
-        start=list(beta=beta, theta=theta, betadisp=log(sigma)),
-        map=list(beta=factor(rep(NA, 2)), theta=factor(rep(NA, length(theta))),
-                 betadisp=factor(NA)),
+        formula, data=data, start=start, map=map,
         se=FALSE, na.action=na.pass, control=glmmTMBControl(optimizer=fixed_optimizer)
     )
     fit$obj$fn(fit$fit$par)
@@ -54,6 +61,7 @@ for (structure in c("ar1", "ou", "diag", "cs", "cs_homogeneous", "us")) {
         design=unname(as.matrix(getME(fit, "Z"))[observed, ]),
         mean=as.vector(model.matrix(fit)[observed, ] %*% beta),
         y=data$y[observed], time=data$time[observed], sigma=as.numeric(sigma(fit)),
+        requested_sigma=sigma, dispersion_parameter=dispersion,
         conditional_mean=as.vector(conditional_mode),
         conditional_covariance=unname(conditional_covariance),
         predicted_mean=as.vector(predict(fit, type="response"))[observed],
@@ -64,4 +72,3 @@ for (structure in c("ar1", "ou", "diag", "cs", "cs_homogeneous", "us")) {
 write_json(list(R=R.version.string, glmmTMB=as.character(packageVersion("glmmTMB")),
                 cases=records), file.path(output, "glmmTMB.json"),
            auto_unbox=TRUE, digits=16, pretty=TRUE)
-capture.output(sessionInfo(), file=file.path(output, "R-session.txt"))

@@ -23,6 +23,7 @@ seed = sum(map(ord, "structured-covariance-glmmTMB-reference"))
 rng = np.random.default_rng(seed)
 results = {}
 for structure, case in reference["cases"].items():
+    np.testing.assert_allclose(case["sigma"], case["requested_sigma"], atol=1e-12)
     covariance, design = np.array(case["covariance"]), np.array(case["design"])
     y, mean = np.array(case["y"]), np.array(case["mean"])
     residual, variance = y - mean, np.full(len(y), case["sigma"] ** 2)

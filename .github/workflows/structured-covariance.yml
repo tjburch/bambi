@@ -39,7 +39,7 @@ jobs:
       - name: Build API documentation and structured covariance guide
         run: |
           set -o pipefail
-          uv pip install 'quartodoc @ git+https://github.com/machow/quartodoc.git@fc9f3cca3c2f930e53c6c7079e41333a13ed0461' sphobjinv 2>&1 | tee .cache/structured-acceptance/docs-install.log
+          uv pip install 'quartodoc @ git+https://github.com/machow/quartodoc.git@fc9f3cca3c2f930e53c6c7079e41333a13ed0461' 'griffe>=1,<2' sphobjinv 2>&1 | tee .cache/structured-acceptance/docs-install.log
           uv pip freeze > .cache/structured-acceptance/docs-environment.txt
           cd docs
           uv run --no-sync python -m quartodoc build --verbose 2>&1 | tee ../.cache/structured-acceptance/docs-api.log
@@ -177,7 +177,7 @@ jobs:
 
   calibration:
     # The PR-body marker works before workflow_dispatch is on the default branch.
-    if: inputs.extended == true || contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->')
+    if: inputs.extended == true || (github.event.action != 'synchronize' && contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->'))
     runs-on: ubuntu-latest
     timeout-minutes: 180
     strategy:
@@ -212,7 +212,7 @@ jobs:
           retention-days: 30
 
   benchmark:
-    if: inputs.extended == true || contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->')
+    if: inputs.extended == true || (github.event.action != 'synchronize' && contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->'))
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -253,7 +253,7 @@ jobs:
             .cache/structured-acceptance/
 
   sensitivity:
-    if: inputs.extended == true || contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->')
+    if: inputs.extended == true || (github.event.action != 'synchronize' && contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->'))
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:

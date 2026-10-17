@@ -16,6 +16,8 @@ are coordinated; no version is invented in `pyproject.toml`.
 The structured workflow runs bounded posterior and regression checks on PRs.
 Adding `<!-- structured-full-acceptance -->` to the PR description also runs the
 100-replication calibration, prior-sensitivity refits, and large benchmarks.
+The marker starts extended jobs when the PR opens or its description changes;
+ordinary code pushes rerun bounded checks without restarting the long jobs.
 This PR trigger works before the workflow is available for `workflow_dispatch`
 on the default branch. The workflows keep logs and raw draws as artifacts on
 success or failure. A green compatibility smoke job is not statistical acceptance.

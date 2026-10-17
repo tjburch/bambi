@@ -1,9 +1,43 @@
 import inspect
+from contextlib import contextmanager
 
 from functools import partial
 
 import pytensor.tensor as pt
 import pymc as pm
+
+
+@contextmanager
+def sampler_dimensions(model, sampler):
+    """Escape nutpie's comma-delimited metadata and restore the public model dimensions."""
+    if sampler != "nutpie" or not any("," in name for name in model.coords):
+        yield {}
+        return
+
+    original_coords = model.coords.copy()
+    original_lengths = model.dim_lengths.copy()
+    original_dims = model.named_vars_to_dims.copy()
+    names = {name: name.replace("%", "%25").replace(",", "%2C") for name in model.coords}
+    try:
+        model.coords.clear()
+        model.coords.update({names[name]: values for name, values in original_coords.items()})
+        model.dim_lengths.clear()
+        model.dim_lengths.update({names[name]: value for name, value in original_lengths.items()})
+        model.named_vars_to_dims.clear()
+        model.named_vars_to_dims.update(
+            {
+                variable: tuple(names.get(dim, dim) for dim in dims)
+                for variable, dims in original_dims.items()
+            }
+        )
+        yield {escaped: original for original, escaped in names.items() if escaped != original}
+    finally:
+        model.coords.clear()
+        model.coords.update(original_coords)
+        model.dim_lengths.clear()
+        model.dim_lengths.update(original_lengths)
+        model.named_vars_to_dims.clear()
+        model.named_vars_to_dims.update(original_dims)
 
 
 def horseshoe(name, tau_nu=3, lam_nu=1, dims=None):

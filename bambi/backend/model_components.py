@@ -9,6 +9,7 @@ from bambi.backend.utils import get_distribution_from_prior, noncentered_default
 from bambi.config import config as bmb_config
 from bambi.families.multivariate import MultivariateFamily
 from bambi.families.univariate import Categorical, Cumulative, StoppingRatio
+from bambi.structured.backend import build_term
 
 
 ORDINAL_FAMILIES = (Cumulative, StoppingRatio)
@@ -58,6 +59,13 @@ class DistributionalComponent:
             self.build_common_terms(pymc_backend, bmb_model)
             self.build_hsgp_terms(bmb_model, pymc_backend)
             self.build_group_specific_terms(pymc_backend, bmb_model)
+            for term in self.component.structured_terms.values():
+                self.output += build_term(
+                    term,
+                    pymc_backend,
+                    bmb_model,
+                    marginalized=term.qualified_name == bmb_model.structured_plan["selected"],
+                )
 
     def build_intercept(self, bmb_model):
         if self.has_intercept:

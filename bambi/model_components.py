@@ -9,6 +9,7 @@ from bambi.families import univariate, multivariate
 from bambi.priors import Prior
 from bambi.terms import CommonTerm, GroupSpecificTerm, HSGPTerm, OffsetTerm, ResponseTerm
 from bambi.utils import get_aliased_name, is_hsgp_term, as_dataset
+from bambi.structured.terms import StructuredTerm
 
 
 class ConstantComponent:
@@ -67,13 +68,33 @@ class DistributionalComponent:
         if self.design.common:
             self.add_common_terms(priors)
             self.add_hsgp_terms(priors)
+            for term_name, term in self.design.common.terms.items():
+                if term.kind == "structured":
+                    term.group_values = spec._structured_data[list(term.groups)].copy()
+                    self.terms[term_name] = StructuredTerm(
+                        term, priors.get(term_name), self.prefix, self
+                    )
 
         if self.design.group:
             self.add_group_specific_terms(priors)
+        self.check_shared_structured_priors(priors)
+
+    def check_shared_structured_priors(self, priors):
+        if not self.structured_terms:
+            return
+        for name, ordinary in (
+            ("common", self.common_terms),
+            ("group_specific", self.group_specific_terms),
+        ):
+            if priors.get(name) is not None and not ordinary:
+                raise ValueError(
+                    f"Shared {name!r} priors do not specify structured covariance parameters. "
+                    "Use a dictionary under the structured term name."
+                )
 
     def add_common_terms(self, priors):
         for name, term in self.design.common.terms.items():
-            if is_hsgp_term(term):
+            if is_hsgp_term(term) or term.kind == "structured":
                 continue
             prior = priors.get(name, priors.get("common", None))
             if isinstance(prior, Prior):
@@ -102,6 +123,9 @@ class DistributionalComponent:
 
     def build_priors(self):
         for term in self.terms.values():
+            if isinstance(term, StructuredTerm):
+                term.build_priors()
+                continue
             if isinstance(term, GroupSpecificTerm):
                 kind = "group_specific"
             elif isinstance(term, CommonTerm) and term.kind == "intercept":
@@ -127,6 +151,7 @@ class DistributionalComponent:
         priors : dict
             Names are terms, values are priors
         """
+        self.check_shared_structured_priors(priors)
         common = priors.get("common")
         group_specific = priors.get("group_specific")
         for name, term in self.terms.items():
@@ -187,7 +212,20 @@ class DistributionalComponent:
                 random_seed=random_seed,
             )
 
+        if include_group_specific:
+            for term in self.structured_terms.values():
+                contribution = term.predict(posterior, data, sample_new_groups, random_seed)
+                linear_predictor += xr.DataArray(contribution, dims=linear_predictor_dims)
+
         # Sort dimensions
+        if np.isscalar(linear_predictor):
+            observations = len(self.spec.data) if data is None else len(data)
+            shape = (posterior.sizes["chain"], posterior.sizes["draw"], observations)
+            if len(linear_predictor_dims) > 3:
+                shape += (posterior.sizes[linear_predictor_dims[-1]],)
+            linear_predictor = xr.DataArray(
+                np.full(shape, linear_predictor), dims=linear_predictor_dims
+            )
         linear_predictor = linear_predictor.transpose(*linear_predictor_dims)
 
         # Add coordinates for the observation number
@@ -547,6 +585,11 @@ class DistributionalComponent:
     def hsgp_terms(self):
         """Return dict of all HSGP terms in model."""
         return {k: v for (k, v) in self.terms.items() if isinstance(v, HSGPTerm)}
+
+    @property
+    def structured_terms(self):
+        """Structured Gaussian effects in this component."""
+        return {k: v for k, v in self.terms.items() if isinstance(v, StructuredTerm)}
 
 
 class ResponseComponent:

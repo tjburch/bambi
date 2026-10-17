@@ -14,6 +14,8 @@ from bambi.backend.utils import (
 from bambi.families.multivariate import MultivariateFamily
 from bambi.families.univariate import Categorical, Cumulative, StoppingRatio
 from bambi.priors import Prior
+from bambi.structured.backend import build_marginal_response
+from bambi.structured.inference import all_terms
 
 
 class CommonTerm:
@@ -332,7 +334,11 @@ class ResponseTerm:
             kwargs[name] = pm.Deterministic(aliased_name, linkinv(output), dims=dims)
 
         # Build the response distribution
-        dist = self.build_distribution(kwargs, pymc_backend)
+        if bmb_model.structured_plan["selected"] is not None:
+            term = all_terms(bmb_model)[bmb_model.structured_plan["selected"]]
+            dist = build_marginal_response(term, pymc_backend, kwargs, self.name)
+        else:
+            dist = self.build_distribution(kwargs, pymc_backend)
 
         return dist
 

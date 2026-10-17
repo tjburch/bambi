@@ -23,6 +23,8 @@ from bambi.backend.model_components import (
     ResponseComponent,
 )
 from bambi.utils import get_aliased_name, as_dataset
+from bambi.structured.inference import recover_effect
+from bambi.backend.utils import sampler_dimensions
 
 _log = logging.getLogger("bambi")
 
@@ -56,6 +58,7 @@ class PyMCModel:
         self.spec = None
         self.components = {}
         self.response_component = None
+        self.structured_covariances = {}
 
     def build(self, spec):
         """Compile the PyMC model from an abstract model specification
@@ -67,6 +70,7 @@ class PyMCModel:
         """
         self.model = pm.Model()
         self.components = {}
+        self.structured_covariances = {}
 
         for name, values in spec.response_term.coords.items():
             if name not in self.model.coords:
@@ -191,6 +195,13 @@ class PyMCModel:
         sampler_backend,
         **kwargs,
     ):
+        conditional_log_likelihood = False
+        if self.spec.structured_plan["selected"] is not None:
+            idata_kwargs = dict(kwargs.get("idata_kwargs") or {})
+            conditional_log_likelihood = bool(idata_kwargs.get("log_likelihood", False))
+            idata_kwargs["log_likelihood"] = False
+            kwargs["idata_kwargs"] = idata_kwargs
+
         # Don't include the parameters of the likelihood, which are deterministics.
         # They can take lot of space in the trace and increase RAM requirements.
         vars_to_sample = get_default_varnames(
@@ -209,7 +220,7 @@ class PyMCModel:
         if nuts is not None:
             kwargs["nuts"] = nuts
 
-        with self.model:
+        with self.model, sampler_dimensions(self.model, sampler_backend) as restore_dimensions:
             try:
                 idata = pm.sample(
                     draws=draws,
@@ -246,7 +257,24 @@ class PyMCModel:
                 else:
                     raise
 
-        idata = self._clean_results(idata, omit_offsets, include_response_params)
+        if restore_dimensions:
+            idata = idata.map_over_datasets(
+                lambda dataset: dataset.rename(
+                    {
+                        name: original
+                        for name, original in restore_dimensions.items()
+                        if name in dataset.dims
+                    }
+                )
+            )
+        idata = self._clean_results(idata, omit_offsets, False)
+        recover_effect(self.spec, idata, random_seed)
+        if self.spec.structured_plan["selected"] is not None and (
+            conditional_log_likelihood or "log_likelihood" in idata
+        ):
+            self.spec.compute_log_likelihood(idata)
+        if include_response_params:
+            self.spec.predict(idata)
         return idata
 
     def _clean_results(self, idata, omit_offsets, include_response_params):

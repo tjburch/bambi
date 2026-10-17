@@ -1,0 +1,115 @@
+---
+title: Structured Gaussian effects
+---
+
+Structured effects add a zero-mean Gaussian process or coefficient vector to a model component's linear predictor. Covariance parameters are shared across the groups in one term. Separate terms have separate parameters. The same features work in auxiliary parameter formulas.
+
+This development feature requires the paired Formulae wrapper interface. Release coordination and statistical acceptance checks remain pending; see the development validation record.
+
+## Formulas
+
+The bar and `by=` forms have the same design, priors, public names, and prediction behavior:
+
+```python
+import bambi as bmb
+
+model = bmb.Model('y ~ x + ar1(season, by=player)', data)
+model = bmb.Model('y ~ x + ar1(0 + season | player)', data)
+```
+
+AR(1) and OU take coordinates. A bar form must remove the intercept and contain exactly one coordinate expression. AR(1) takes finite integer times or a declared ordered categorical grid. Integer gaps are preserved: 2024 to 2026 is two steps. An unordered label has no defined time order. OU takes real numbers or datetimes. Datetime differences are elapsed days by default; `time_unit` accepts seconds, minutes, hours, days, or weeks. Timezone-aware datetimes use elapsed UTC time. Numeric coordinates retain their units, including when `time_unit` labels them. Coordinates are never standardized.
+
+```python
+bmb.Model('y ~ ou(timestamp, by=player, time_unit="hours")', data)
+bmb.Model('y ~ ou(0 + timestamp | player, time_unit="hours")', data)
+```
+
+`us`, `diag`, and `cs` use an ordinary coefficient design. Numeric predictors produce slopes. Categorical predictors use Formulae contrasts. Remove the intercept to get one indicator per level. Their bar forms and `by=` forms include the usual implicit intercept:
+
+```python
+bmb.Model('y ~ us(x | player)', data)
+bmb.Model('y ~ us(1 + x, by=player)', data)
+bmb.Model('y ~ diag(0 + C(visit) | patient)', data)
+bmb.Model('y ~ cs(1 + x, by=player, homogeneous=True)', data)
+```
+
+Declare categorical domains at construction, for example with `pd.Categorical(..., categories=[...], ordered=True)` or `C(visit, levels=[...])`. Declared but unobserved levels remain in the covariance. Their parameters can remain informed only by their priors. Undeclared levels cannot extend the covariance after fitting. New numeric slope values evaluate the existing coefficient basis and remain valid.
+
+Omit `by` for one ungrouped process or coefficient vector. Both `by=player` and `by="player"` name a data column. A list creates a composite key, not several additive terms:
+
+```python
+bmb.Model("y ~ ar1(season, by=['player', 'pitcher_hand'])", data)
+bmb.Model('y ~ ar1(0 + season | player:pitcher_hand)', data)
+bmb.Model('y ~ ar1(0 + season | team/player)', data)
+```
+
+The nested example expands to a team process and a team-player process with separate covariance parameters. Deeper nesting follows Formulae's usual expansion. A player process continues across team changes. A team-player process is independent across distinct pairs, but reuses the pair when the player returns to the team. Use a stint identifier for a fresh process on each stint.
+
+## Covariances and priors
+
+| Structure | Covariance |
+| --- | --- |
+| `ar1` | `sd**2 * rho**abs(t[i] - t[j])` |
+| `ou` | `sd**2 * exp(-decay * abs(t[i] - t[j]))` |
+| `diag` | Independent coefficients, one SD per coefficient |
+| `cs` | One off-diagonal correlation and one SD per coefficient |
+| `us` | Unrestricted positive-definite correlation, one SD per coefficient |
+
+`sd` is the stationary marginal SD for temporal processes. A transition across a gap has innovation variance `sd**2 * (1 - a**2)`, with `a=rho**gap` or `a=exp(-decay*gap)`. Repeated group-time rows share a state and keep separate observation noise. No missing integer steps are allocated.
+
+CS is heterogeneous by default. `homogeneous=True` gives one shared SD in the raw coefficient basis. With K coefficients, its correlation lies strictly between `-1/(K-1)` and 1. Both variants support negative correlation. One-dimensional CS and US have identity correlation and need no correlation random variable. Response coefficient axes use independent vectors and covariance parameters, following the family's reference-category rules.
+
+Priors use dictionaries under canonical term names. Equivalent bar spellings also work:
+
+```python
+priors = {
+    'ar1(season, by=player)': {
+        'sd': bmb.Prior('HalfNormal', sigma=0.7),
+        'rho': bmb.Prior('Normal', mu=0, sigma=0.5),
+    },
+    'sigma': bmb.Prior('HalfNormal', sigma=1),
+}
+model = bmb.Model('y ~ x + ar1(season, by=player)', data, priors=priors)
+```
+
+Defaults are HalfNormal SDs with scale `2.5*s`. For Gaussian identity-link parent effects with automatic scaling, s is response SD, with fallback 1 for a constant response. Other components and `auto_scale=False` use s=1. With automatic scaling enabled, coefficient scales also divide by the corresponding design-column SD, using 1 for constant columns. With `auto_scale=False`, every default SD has scale 2.5 in the raw coefficient basis. Homogeneous CS retains one shared raw-basis scale. User priors are not rescaled.
+
+AR(1) and CS use Normal(0, 0.5) correlation priors, normalized and truncated to their admissible intervals. This normalization also applies to user correlation priors. SD and decay distributions are restricted to positive values. OU's default decay prior is Exponential with rate equal to the median positive within-group adjacent time gap. It falls back to positive global gaps, then one native time unit. With automatic scaling disabled, the rate is 1. Decay is in inverse coordinate units. US uses LKJ with fixed `eta=2`; alternatively supply a symmetric positive-definite unit-diagonal `correlation` matrix. Do not supply both `eta` and `correlation`.
+
+Numeric constants fix covariance parameters. Scalar SD priors produce independent draws per coefficient in heterogeneous designs; vector prior parameters set coefficient-specific scales.
+
+Independent latent variance can be weakly identified against residual variance. Unrestricted covariance can also compete with residual noise. Overlapping processes with identical grouping need careful interpretation: proper priors do not make their separate contributions data-identified. No trajectory sum constraint is added and residual noise is retained.
+
+## Inference
+
+```python
+idata = model.fit()  # structured_method='auto'
+idata = model.fit(structured_method='latent')
+idata = model.fit(structured_method='marginal')
+idata = model.fit(structured_method='marginal', marginalize='ar1(season, by=player)')
+```
+
+`inference_method` selects PyMC, nutpie, NumPyro, or BlackJAX independently of `structured_method`. Automatic mode selects at most one eligible effect, choosing the largest scalar latent coefficient count. Temporal counts use observed unique group-state pairs. Coefficient counts use fitted dimension times observed groups. Ties use component-qualified canonical names. This heuristic reduces sampled dimension; it does not guarantee the fastest run.
+
+Exact marginal inference requires a univariate Gaussian identity-link mean. Remaining effects, including crossed effects, HSGPs, and auxiliary scale processes, stay sampled. Conditional observation SDs may vary. Effects in scale predictors and non-Gaussian models use latent inference. Modified likelihoods, or potentials involving the selected latent vector, require latent inference. Automatic mode reports supported fallback without a warning. Explicit unsupported selections raise an error. Select component-qualified names when aliases or spellings are ambiguous; lists of selections are unsupported.
+
+Builds and repeated fits resolve the chosen plan again when necessary. Fit logs and the posterior's `structured_inference` JSON attribute report requested/effective method, selected effect, remaining effects, and fallback reason. Marginal fits recover one joint conditional state or coefficient draw per posterior draw. These recovered public effects support the same prediction operations as latent fits. Prior prediction uses the complete latent generative model, including after a marginalized fit.
+
+## Composition and prediction
+
+```python
+formula = bmb.Formula(
+    "y ~ x + (1|team) + ar1(season, by=player)"
+    " + ar1(season, by=['player', 'pitcher_hand'])",
+    'sigma ~ z + ar1(season, by=team)',
+)
+model = bmb.Model(formula, data)
+idata = model.fit(inference_method='nutpie')
+model.predict(idata, data=future, kind='response', sample_new_groups=True, random_seed=918)
+```
+
+Observed states reuse posterior effects. Predictions at missing or new AR(1)/OU times draw jointly conditional on the fitted states. A new group gets a fresh joint process or vector from each posterior covariance draw. Replicate target rows share effects. Distinct terms and distinct groups are conditionally independent. The current `sample_new_groups` interface and its deprecation behavior apply.
+
+`include_group_specific=False` sets all structured and ordinary group effects to zero, including ungrouped structured effects. It is a prediction at zero effects; it does not average over a fresh population process. Observation predictions add fresh likelihood noise.
+
+`compute_log_likelihood` evaluates the conditional observation density using sampled or recovered effects, in original row order. Kalman predictive increments are a different conditioning factorization and are not stored as observation-level log likelihood. Observation-level LOO, leaving out a whole group, and forecasting future periods answer different questions.

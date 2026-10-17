@@ -139,7 +139,7 @@ Read-only Sol High reviewers received the requirements and source and independen
 
 - The API documentation and structured covariance guide build, using the repository-pinned Quartodoc commit. This runs on forks; the existing publication workflow is upstream-only.
 - The full paired Formulae regression suite.
-- Eleven meaningful latent/marginal posterior pairs: all structures including both CS variants and 3D US, full composition on nutpie, and AR(1) on PyMC/NumPyro/BlackJAX; 4 serial chains, 2,000 draws, 1,500 tuning steps, diagnostic and MCSE agreement failure gates.
+- Eleven meaningful latent/marginal posterior pairs: all structures including both CS variants and 3D US, full composition on nutpie, and AR(1) on PyMC/NumPyro/BlackJAX; 4 serial chains, 2,000 draws and normally 1,500 tuning steps, diagnostic and MCSE agreement failure gates. Composition uses 2,500 tuning steps and target acceptance 0.99 after the divergence failure described below.
 - The 72-case execution matrix across all four samplers.
 - Fixed-parameter glmmTMB reference comparisons.
 
@@ -175,6 +175,8 @@ The [CI evidence summary](structured-covariance-ci-results.json) records inspect
 - AR(1) prior-scale 0.5/1/2 refits converge with no shifts above 0.3 baseline posterior SD. OU refits converge; halving its SD prior scale shifts the SD mean by 0.308 baseline posterior SD, triggering the prespecified prior-dependence flag. The baseline 94% HDI [0.478, 0.844] changes to [0.473, 0.788]; doubling gives [0.492, 0.855]. This is reported as prior dependence, not an implementation failure or blanket robustness claim.
 - The initial documentation job failed because the pip-only job installed Griffe 2 while the repository constrains Griffe to 1. Applying that existing constraint fixes the rerun. The API build and guide render pass; the rendered 57,748-byte guide artifact was inspected for the new API and scaling sections.
 - The initial reference job failed before fitting: Ubuntu supplies glmmTMB 1.1.8 with `betad`/log variance, while local 1.1.11 uses `betadisp`/log SD. The fixture detects the parameter name, fixes the requested SD under the appropriate convention, and asserts SD 0.3 in Python. All six local references pass again. The corrected CI artifact on R 4.3.3/glmmTMB 1.1.8 also passes all six cases, with residual SD 0.3 and maximum absolute log-density error 1.25e-14. Failure logs and artifacts remain available.
+
+The initial 12-group composition pair fails the zero-divergence gate: one divergence per method among 8,000 retained draws, despite R-hat <=1.0021, minimum bulk ESS >=1,909 and minimum tail ESS >=2,485. All posterior moment comparisons are within their MCSE thresholds, but that does not waive the divergence failure. Raw posterior/sample statistics were inspected; the retained divergent iterations have ordinary team SDs in approximately the 96th–97th posterior percentiles, which is not proof of the exact trajectory location or cause. The same data/seeds will be rerun with target acceptance 0.99 and 2,500 tuning steps. Failure artifacts remain in run 39076990474. Duplicate bounded runs from documentation-only updates were cancelled; the initial extended calibration/benchmarks remain running.
 
 Repeated calibration, large benchmarks, remaining sampler/posterior jobs, remaining sensitivity interpretation, and full regression completion are still pending. No scientific pass is inferred from an execution-only green job.
 

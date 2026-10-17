@@ -254,6 +254,7 @@ def fit(args):
             "composition",
         )
     }
+    configuration["target_accept"] = 0.99 if args.composition else 0.97
     write_json(
         output / "command.json",
         {
@@ -319,7 +320,7 @@ def fit(args):
             random_seed=run_seed,
             inference_method=args.sampler,
             structured_method=args.method,
-            target_accept=0.97,
+            target_accept=configuration["target_accept"],
             progressbar=False,
             compute_convergence_checks=False,
         )

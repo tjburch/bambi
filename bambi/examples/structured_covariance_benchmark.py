@@ -234,6 +234,7 @@ diagnostic_data = xr.DataTree.from_dict(
 )
 diagnostic_error, diagnostics = azs.diagnose(diagnostic_data, return_diagnostics=True)
 write_json(output / f"{name}-diagnostics.json", diagnostics)
+bfmi = np.asarray(diagnostics.get("bfmi", {}).get("bfmi_values", []))
 bulk, tail, rhat = azs.ess(common), azs.ess(common, method="tail"), azs.rhat(common)
 bulk_ess = min(float(value.min()) for value in bulk.data_vars.values())
 tail_ess = min(float(value.min()) for value in tail.data_vars.values())
@@ -248,6 +249,8 @@ covariance_ess_min = min(covariance_ess.values())
 diagnostics_passed = (
     args.chains >= 4
     and not diagnostic_error
+    and bfmi.size == args.chains
+    and np.isfinite(bfmi).all()
     and all(
         np.isfinite(value).all() for data in (bulk, tail, rhat) for value in data.data_vars.values()
     )

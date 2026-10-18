@@ -56,8 +56,19 @@ def test_convergence_requires_tail_ess(tmp_path, monkeypatch):
     variables = xr.Dataset(
         {"effect": (("chain", "draw"), np.random.default_rng(seed).normal(size=(4, 100)))}
     )
-    idata = xr.DataTree.from_dict({"posterior": variables, "sample_stats": variables})
-    monkeypatch.setattr(validation.azs, "diagnose", lambda *args, **kwargs: (False, {}))
+    statistics = xr.Dataset(
+        {
+            "energy": variables.effect,
+            "diverging": xr.zeros_like(variables.effect, dtype=bool),
+            "reached_max_treedepth": xr.zeros_like(variables.effect, dtype=bool),
+        }
+    )
+    idata = xr.DataTree.from_dict({"posterior": variables, "sample_stats": statistics})
+    monkeypatch.setattr(
+        validation.azs,
+        "diagnose",
+        lambda *args, **kwargs: (False, {"bfmi": {"bfmi_values": np.ones(4)}}),
+    )
     monkeypatch.setattr(validation.azs, "summary", lambda *args, **kwargs: pd.DataFrame())
     monkeypatch.setattr(validation.azs, "rhat", lambda *args, **kwargs: xr.Dataset({"effect": 1.0}))
     monkeypatch.setattr(
@@ -67,6 +78,73 @@ def test_convergence_requires_tail_ess(tmp_path, monkeypatch):
             {"effect": 1000 if method == "bulk" else 20}
         ),
     )
+    assert not validation.diagnose(idata, tmp_path)["passed"]
+
+
+def test_diagnostic_statistics_checks_jax_depth_limit():
+    statistics = xr.Dataset(
+        {
+            "energy": ("draw", [1.0, 2.0, 3.0]),
+            "diverging": ("draw", [False, False, False]),
+            "tree_depth": ("draw", [9, 10, 11]),
+        }
+    )
+    result = validation.diagnostic_statistics(xr.DataTree.from_dict({"sample_stats": statistics}))
+    np.testing.assert_array_equal(result.reached_max_treedepth, [False, True, True])
+
+
+@pytest.mark.parametrize("flag", ["reached_max_treedepth", "maxdepth_reached"])
+def test_diagnostic_statistics_preserves_native_flags(flag):
+    statistics = xr.Dataset(
+        {
+            "energy": ("draw", [1.0]),
+            "diverging": ("draw", [False]),
+            "tree_depth": ("draw", [10]),
+            flag: ("draw", [False]),
+        }
+    )
+    result = validation.diagnostic_statistics(xr.DataTree.from_dict({"sample_stats": statistics}))
+    assert not bool(result.reached_max_treedepth.any())
+
+
+@pytest.mark.parametrize("missing", ["energy", "diverging", "tree_depth"])
+def test_diagnostic_statistics_requires_sampler_evidence(missing):
+    statistics = xr.Dataset(
+        {"energy": ("draw", [1.0]), "diverging": ("draw", [False]), "tree_depth": ("draw", [2])}
+    ).drop_vars(missing)
+    with pytest.raises(ValueError, match="lacks required diagnostics"):
+        validation.diagnostic_statistics(xr.DataTree.from_dict({"sample_stats": statistics}))
+
+
+@pytest.mark.parametrize("invalid", ["energy", "diverging", "tree_depth", "reached_max_treedepth"])
+def test_diagnostic_statistics_rejects_nonfinite_evidence(invalid):
+    statistics = xr.Dataset(
+        {"energy": ("draw", [1.0]), "diverging": ("draw", [False]), "tree_depth": ("draw", [2])}
+    )
+    statistics[invalid] = xr.DataArray([np.nan], dims="draw")
+    with pytest.raises(ValueError, match="nonfinite"):
+        validation.diagnostic_statistics(xr.DataTree.from_dict({"sample_stats": statistics}))
+
+
+@pytest.mark.parametrize("invalid", [np.nan, np.inf])
+def test_convergence_requires_finite_bfmi(tmp_path, monkeypatch, invalid):
+    variables = xr.Dataset({"effect": (("chain", "draw"), np.arange(400).reshape(4, 100))})
+    statistics = xr.Dataset(
+        {
+            "energy": variables.effect,
+            "diverging": xr.zeros_like(variables.effect, dtype=bool),
+            "reached_max_treedepth": xr.zeros_like(variables.effect, dtype=bool),
+        }
+    )
+    idata = xr.DataTree.from_dict({"posterior": variables, "sample_stats": statistics})
+    monkeypatch.setattr(
+        validation.azs,
+        "diagnose",
+        lambda *args, **kwargs: (False, {"bfmi": {"bfmi_values": [invalid, 1, 1, 1]}}),
+    )
+    monkeypatch.setattr(validation.azs, "summary", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(validation.azs, "rhat", lambda *args, **kwargs: xr.Dataset({"effect": 1.0}))
+    monkeypatch.setattr(validation.azs, "ess", lambda *args, **kwargs: xr.Dataset({"effect": 1000}))
     assert not validation.diagnose(idata, tmp_path)["passed"]
 
 

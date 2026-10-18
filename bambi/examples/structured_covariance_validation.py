@@ -24,6 +24,7 @@ from scipy import stats
 import bambi as bmb
 
 SEED = sum(map(ord, "structured-covariance-statistical-acceptance"))
+MAX_TREEDEPTH = 10
 
 
 def write_json(path, value):
@@ -194,8 +195,21 @@ def monitored(idata):
 
 def diagnostic_statistics(idata):
     statistics = idata.sample_stats.to_dataset()
-    if "maxdepth_reached" in statistics and "reached_max_treedepth" not in statistics:
-        statistics = statistics.assign(reached_max_treedepth=statistics.maxdepth_reached)
+    if "reached_max_treedepth" not in statistics:
+        if "maxdepth_reached" in statistics:
+            statistics = statistics.assign(reached_max_treedepth=statistics.maxdepth_reached)
+        elif "tree_depth" in statistics:
+            if not bool(np.isfinite(statistics.tree_depth).all()):
+                raise ValueError("Sampler output has nonfinite tree_depth.")
+            statistics = statistics.assign(
+                reached_max_treedepth=statistics.tree_depth >= MAX_TREEDEPTH
+            )
+    required = {"diverging", "energy", "reached_max_treedepth"}
+    if missing := required.difference(statistics):
+        raise ValueError(f"Sampler output lacks required diagnostics: {sorted(missing)}")
+    for name in required:
+        if not bool(np.isfinite(statistics[name]).all()):
+            raise ValueError(f"Sampler output has nonfinite {name}.")
     return statistics
 
 
@@ -212,11 +226,12 @@ def diagnose(idata, output):
     rhat_max = max(float(value.max()) for value in rhat.data_vars.values())
     ess_min = min(float(value.min()) for value in bulk.data_vars.values())
     tail_min = min(float(value.min()) for value in tail.data_vars.values())
+    bfmi = np.asarray(details.get("bfmi", {}).get("bfmi_values", []))
     finite = all(
         np.isfinite(value).all()
         for dataset in (rhat, bulk, tail)
         for value in dataset.data_vars.values()
-    )
+    ) and (bfmi.size == variables.sizes["chain"] and np.isfinite(bfmi).all())
     passed = (
         not failed
         and finite
@@ -255,6 +270,7 @@ def fit(args):
         )
     }
     configuration["target_accept"] = 0.99 if args.composition else 0.97
+    configuration["max_treedepth"] = MAX_TREEDEPTH
     write_json(
         output / "command.json",
         {
@@ -303,6 +319,10 @@ def fit(args):
         },
     )
     run_seed = args.seed + (100 if args.method == "latent" else 200)
+    depth_option = {
+        "numpyro": "max_tree_depth",
+        "blackjax": "max_num_doublings",
+    }.get(args.sampler, "max_treedepth")
     sampler = pm.sample
 
     def preserve_sampler_output(*positional, **keywords):
@@ -321,6 +341,7 @@ def fit(args):
             inference_method=args.sampler,
             structured_method=args.method,
             target_accept=configuration["target_accept"],
+            nuts={depth_option: MAX_TREEDEPTH},
             progressbar=False,
             compute_convergence_checks=False,
         )

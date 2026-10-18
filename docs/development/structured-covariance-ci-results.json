@@ -1,5 +1,5 @@
 {
-  "status": "Bounded checks, full regression matrices, and 100-replication OU calibration pass; six calibration cases and representative performance pending.",
+  "status": "Bounded checks, full regression matrices, and 100-replication OU calibration pass; initial OU benchmark fails convergence. Controlled benchmark rerun, six calibration cases and latest CI pending.",
   "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
   "production_commit": "205730c26d59bebfbc132fde85559792887e32fc",
   "ci_fix_commit": "2eb4c5a16ddbad97ccf301e0077865fc0db7b349",
@@ -9755,6 +9755,404 @@
       "swaps": 0,
       "run": 39078041112,
       "command": ".venv/bin/python bambi/examples/structured_covariance_validation.py compare .cache/structured-ci/bambi-39078041112/posterior-composition/latent .cache/structured-ci/bambi-39078041112/posterior-composition/marginal --output .cache/structured-ci/bambi-39078041112/posterior-composition/strict-comparison"
+    }
+  },
+  "initial_benchmarks": {
+    "ou": {
+      "run": 39076990474,
+      "job": 117526080066,
+      "status": "failed convergence; no accepted efficiency evidence",
+      "original_target_accept": 0.8,
+      "records": [
+        {
+          "groups": 50,
+          "method": "latent",
+          "raw_divergences": 1025,
+          "raw_maximum_depth_hits": 0,
+          "record": {
+            "structure": "ou",
+            "method": "latent",
+            "groups": 50,
+            "draws": 1500,
+            "tune": 1500,
+            "chains": 4,
+            "homogeneous": false,
+            "seed": 3763,
+            "observations": 416,
+            "build_and_prior_seconds": 8.543313355999999,
+            "compile_seconds": 17.015000115000007,
+            "sampling_seconds": 24.98341592899999,
+            "cleaning_and_recovery_seconds": 0.006490754999987303,
+            "raw_save_seconds": 0.19849088899999856,
+            "save_and_prediction_seconds": 1.763423792000026,
+            "peak_rss_bytes": 817340416,
+            "divergences": 1025,
+            "diagnostics_passed": false,
+            "ess_bulk_min": 18.503080159407165,
+            "ess_tail_min": 9.7303610761163,
+            "total_inference_seconds": 52.31164394700001,
+            "covariance_ess_bulk": {
+              "ou(time, by=group)_sd": 54.72598067085121,
+              "ou(time, by=group)_decay": 121.34397033069064
+            },
+            "covariance_ess_per_total_second": {
+              "ou(time, by=group)_sd": 1.0461529506948264,
+              "ou(time, by=group)_decay": 2.319635958174653
+            },
+            "ess_per_total_second": 1.0461529506948264,
+            "logp_evaluation_compile_seconds": 2.452299041999993,
+            "median_logp_seconds": 4.6479999994630816e-05,
+            "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+            "compiler_cache": {
+              "pytensor": "/home/runner/work/_temp/structured-ou-50-latent",
+              "numba": "/home/runner/work/_temp/numba-ou-50-latent"
+            },
+            "versions": {
+              "bambi": "0.1.dev1+gcaa8db78a",
+              "formulae": "0.1.dev1+g2fbeb11d8",
+              "pymc": "6.3.2",
+              "pytensor": "3.3.4",
+              "nutpie": "0.16.11"
+            },
+            "diagnostic_limit": "Default short runs cannot establish convergence or efficiency; acceptance requires four converged chains."
+          }
+        },
+        {
+          "groups": 50,
+          "method": "marginal",
+          "raw_divergences": 191,
+          "raw_maximum_depth_hits": 0,
+          "record": {
+            "structure": "ou",
+            "method": "marginal",
+            "groups": 50,
+            "draws": 1500,
+            "tune": 1500,
+            "chains": 4,
+            "homogeneous": false,
+            "seed": 3763,
+            "observations": 416,
+            "build_and_prior_seconds": 0.4933037079999849,
+            "compile_seconds": 14.044151346999996,
+            "sampling_seconds": 64.11283072700002,
+            "cleaning_and_recovery_seconds": 8.419809966000003,
+            "raw_save_seconds": 0.14335624800000346,
+            "save_and_prediction_seconds": 1.6321663880000017,
+            "peak_rss_bytes": 683782144,
+            "divergences": 191,
+            "diagnostics_passed": false,
+            "ess_bulk_min": 16.303830637892904,
+            "ess_tail_min": 9.162430587992326,
+            "total_inference_seconds": 88.702262136,
+            "covariance_ess_bulk": {
+              "ou(time, by=group)_sd": 492.1151662612263,
+              "ou(time, by=group)_decay": 767.5208017185577
+            },
+            "covariance_ess_per_total_second": {
+              "ou(time, by=group)_sd": 5.547943811249209,
+              "ou(time, by=group)_decay": 8.652775963501135
+            },
+            "ess_per_total_second": 5.547943811249209,
+            "logp_evaluation_compile_seconds": 2.160672166999973,
+            "median_logp_seconds": 8.785200000716031e-05,
+            "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+            "compiler_cache": {
+              "pytensor": "/home/runner/work/_temp/structured-ou-50-marginal",
+              "numba": "/home/runner/work/_temp/numba-ou-50-marginal"
+            },
+            "versions": {
+              "bambi": "0.1.dev1+gcaa8db78a",
+              "formulae": "0.1.dev1+g2fbeb11d8",
+              "pymc": "6.3.2",
+              "pytensor": "3.3.4",
+              "nutpie": "0.16.11"
+            },
+            "diagnostic_limit": "Default short runs cannot establish convergence or efficiency; acceptance requires four converged chains."
+          }
+        },
+        {
+          "groups": 250,
+          "method": "latent",
+          "raw_divergences": 972,
+          "raw_maximum_depth_hits": 0,
+          "record": {
+            "structure": "ou",
+            "method": "latent",
+            "groups": 250,
+            "draws": 1500,
+            "tune": 1500,
+            "chains": 4,
+            "homogeneous": false,
+            "seed": 3763,
+            "observations": 2075,
+            "build_and_prior_seconds": 2.633866953999984,
+            "compile_seconds": 9.882429258999991,
+            "sampling_seconds": 162.52336134900003,
+            "cleaning_and_recovery_seconds": 0.006489541999997073,
+            "raw_save_seconds": 0.18043868699999166,
+            "save_and_prediction_seconds": 1.6113776999999914,
+            "peak_rss_bytes": 1149014016,
+            "divergences": 972,
+            "diagnostics_passed": false,
+            "ess_bulk_min": 10.273310904143946,
+            "ess_tail_min": 5.218577260604505,
+            "total_inference_seconds": 176.657524804,
+            "covariance_ess_bulk": {
+              "ou(time, by=group)_sd": 678.6357320517436,
+              "ou(time, by=group)_decay": 501.2191675034998
+            },
+            "covariance_ess_per_total_second": {
+              "ou(time, by=group)_sd": 3.841533117848697,
+              "ou(time, by=group)_decay": 2.8372364441288203
+            },
+            "ess_per_total_second": 2.8372364441288203,
+            "logp_evaluation_compile_seconds": 1.8514001620000045,
+            "median_logp_seconds": 0.00014761699998189215,
+            "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+            "compiler_cache": {
+              "pytensor": "/home/runner/work/_temp/structured-ou-250-latent",
+              "numba": "/home/runner/work/_temp/numba-ou-250-latent"
+            },
+            "versions": {
+              "bambi": "0.1.dev1+gcaa8db78a",
+              "formulae": "0.1.dev1+g2fbeb11d8",
+              "pymc": "6.3.2",
+              "pytensor": "3.3.4",
+              "nutpie": "0.16.11"
+            },
+            "diagnostic_limit": "Default short runs cannot establish convergence or efficiency; acceptance requires four converged chains."
+          }
+        },
+        {
+          "groups": 250,
+          "method": "marginal",
+          "raw_divergences": 16,
+          "raw_maximum_depth_hits": 0,
+          "record": {
+            "structure": "ou",
+            "method": "marginal",
+            "groups": 250,
+            "draws": 1500,
+            "tune": 1500,
+            "chains": 4,
+            "homogeneous": false,
+            "seed": 3763,
+            "observations": 2075,
+            "build_and_prior_seconds": 0.523377996000022,
+            "compile_seconds": 8.794203536999987,
+            "sampling_seconds": 435.559989842,
+            "cleaning_and_recovery_seconds": 35.787916472000006,
+            "raw_save_seconds": 0.14128893999998127,
+            "save_and_prediction_seconds": 1.4241384059999973,
+            "peak_rss_bytes": 857026560,
+            "divergences": 16,
+            "diagnostics_passed": false,
+            "ess_bulk_min": 444.4998530853849,
+            "ess_tail_min": 475.03977397979014,
+            "total_inference_seconds": 482.089626253,
+            "covariance_ess_bulk": {
+              "ou(time, by=group)_sd": 3525.8330870408477,
+              "ou(time, by=group)_decay": 3080.7349953648936
+            },
+            "covariance_ess_per_total_second": {
+              "ou(time, by=group)_sd": 7.313646457081188,
+              "ou(time, by=group)_decay": 6.390378111451268
+            },
+            "ess_per_total_second": 6.390378111451268,
+            "logp_evaluation_compile_seconds": 1.262195184999996,
+            "median_logp_seconds": 0.00036491750000777756,
+            "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+            "compiler_cache": {
+              "pytensor": "/home/runner/work/_temp/structured-ou-250-marginal",
+              "numba": "/home/runner/work/_temp/numba-ou-250-marginal"
+            },
+            "versions": {
+              "bambi": "0.1.dev1+gcaa8db78a",
+              "formulae": "0.1.dev1+g2fbeb11d8",
+              "pymc": "6.3.2",
+              "pytensor": "3.3.4",
+              "nutpie": "0.16.11"
+            },
+            "diagnostic_limit": "Default short runs cannot establish convergence or efficiency; acceptance requires four converged chains."
+          }
+        },
+        {
+          "groups": 1000,
+          "method": "latent",
+          "raw_divergences": 1496,
+          "raw_maximum_depth_hits": 0,
+          "record": {
+            "structure": "ou",
+            "method": "latent",
+            "groups": 1000,
+            "draws": 1500,
+            "tune": 1500,
+            "chains": 4,
+            "homogeneous": false,
+            "seed": 3763,
+            "observations": 8431,
+            "build_and_prior_seconds": 2.724915067999973,
+            "compile_seconds": 10.024446889000046,
+            "sampling_seconds": 744.506204985,
+            "cleaning_and_recovery_seconds": 0.007287442000006195,
+            "raw_save_seconds": 0.25854598000000806,
+            "save_and_prediction_seconds": 1.676116476000061,
+            "peak_rss_bytes": 2912833536,
+            "divergences": 1496,
+            "diagnostics_passed": false,
+            "ess_bulk_min": 6.514024607702517,
+            "ess_tail_min": 6.507099528697186,
+            "total_inference_seconds": 758.93897086,
+            "covariance_ess_bulk": {
+              "ou(time, by=group)_sd": 14.031310657985617,
+              "ou(time, by=group)_decay": 133.09895935149274
+            },
+            "covariance_ess_per_total_second": {
+              "ou(time, by=group)_sd": 0.018488061882085044,
+              "ou(time, by=group)_decay": 0.175375049196209
+            },
+            "ess_per_total_second": 0.018488061882085044,
+            "logp_evaluation_compile_seconds": 1.8381107269999575,
+            "median_logp_seconds": 0.0005457695000359308,
+            "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+            "compiler_cache": {
+              "pytensor": "/home/runner/work/_temp/structured-ou-1000-latent",
+              "numba": "/home/runner/work/_temp/numba-ou-1000-latent"
+            },
+            "versions": {
+              "bambi": "0.1.dev1+gcaa8db78a",
+              "formulae": "0.1.dev1+g2fbeb11d8",
+              "pymc": "6.3.2",
+              "pytensor": "3.3.4",
+              "nutpie": "0.16.11"
+            },
+            "diagnostic_limit": "Default short runs cannot establish convergence or efficiency; acceptance requires four converged chains."
+          }
+        },
+        {
+          "groups": 1000,
+          "method": "marginal",
+          "raw_divergences": 63,
+          "raw_maximum_depth_hits": 0,
+          "record": {
+            "structure": "ou",
+            "method": "marginal",
+            "groups": 1000,
+            "draws": 1500,
+            "tune": 1500,
+            "chains": 4,
+            "homogeneous": false,
+            "seed": 3763,
+            "observations": 8431,
+            "build_and_prior_seconds": 0.5617057239999212,
+            "compile_seconds": 8.723911123000107,
+            "sampling_seconds": 2457.5204543399996,
+            "cleaning_and_recovery_seconds": 139.83210385599978,
+            "raw_save_seconds": 0.1438144359999569,
+            "save_and_prediction_seconds": 1.7911320000002888,
+            "peak_rss_bytes": 1814421504,
+            "divergences": 63,
+            "diagnostics_passed": false,
+            "ess_bulk_min": 21.596025532454757,
+            "ess_tail_min": 8.410912252898,
+            "total_inference_seconds": 2608.429307043,
+            "covariance_ess_bulk": {
+              "ou(time, by=group)_sd": 559.6211544648081,
+              "ou(time, by=group)_decay": 997.1965739914525
+            },
+            "covariance_ess_per_total_second": {
+              "ou(time, by=group)_sd": 0.21454334719893667,
+              "ou(time, by=group)_decay": 0.38229771889885217
+            },
+            "ess_per_total_second": 0.21454334719893667,
+            "logp_evaluation_compile_seconds": 1.1263901590000387,
+            "median_logp_seconds": 0.0014503470001727692,
+            "platform": "Linux-6.17.0-1022-azure-x86_64-with-glibc2.39",
+            "compiler_cache": {
+              "pytensor": "/home/runner/work/_temp/structured-ou-1000-marginal",
+              "numba": "/home/runner/work/_temp/numba-ou-1000-marginal"
+            },
+            "versions": {
+              "bambi": "0.1.dev1+gcaa8db78a",
+              "formulae": "0.1.dev1+g2fbeb11d8",
+              "pymc": "6.3.2",
+              "pytensor": "3.3.4",
+              "nutpie": "0.16.11"
+            },
+            "diagnostic_limit": "Default short runs cannot establish convergence or efficiency; acceptance requires four converged chains."
+          }
+        }
+      ],
+      "assessment": {
+        "passed": false,
+        "complete_sizes": true,
+        "diagnostics_passed": false,
+        "marginal_logp_scaling_exponent": 0.9307359262113385,
+        "useful_total_benefit": false,
+        "comparisons": [
+          {
+            "groups": 50,
+            "homogeneous": false,
+            "total_speedup": 0.5897441923949448,
+            "ess_per_total_second_ratio": 5.303186123562922,
+            "diagnostics_passed": false
+          },
+          {
+            "groups": 250,
+            "homogeneous": false,
+            "total_speedup": 0.3664412490620372,
+            "ess_per_total_second_ratio": 2.2523248369641777,
+            "diagnostics_passed": false
+          },
+          {
+            "groups": 1000,
+            "homogeneous": false,
+            "total_speedup": 0.29095631183517023,
+            "ess_per_total_second_ratio": 11.604426065169624,
+            "diagnostics_passed": false
+          }
+        ]
+      },
+      "artifact_download": {
+        "artifact_id": "12118624572",
+        "bytes": 1422071020,
+        "sha256": "8c750608b967f47ef5ac979fd2d6a897fa55b7bf85541214aa056e0959ac360a",
+        "download_seconds": 44.756534875021316
+      },
+      "paired_datasets_identical": true,
+      "independent_review": "Fresh read-only Sol High reviewer inspected actual code, requirements, JSON/CSV/logs and defaults. No concrete OU law/gradient defect found. Controlled adaptation-only rerun warranted.",
+      "interpretation": "Sampling dominates measured cost (2457.5s at 1000 groups versus 139.8s recovery); no useful efficiency conclusion is valid before all diagnostic gates pass.",
+      "raw_inspection_resources": {
+        "wall_seconds": 3.65,
+        "peak_rss_bytes": 162512896,
+        "swaps": 0
+      },
+      "controlled_recheck": {
+        "target_accept": 0.99,
+        "tune": 2500,
+        "draws": 1500,
+        "chains": 4,
+        "cores": 1,
+        "data_priors_and_seed_unchanged": true,
+        "job_timeout_minutes": 360,
+        "status": "prepared; CI launch pending",
+        "diagnostic_scope": "All cleaned/recovered posterior parameters and complete structured state/coefficient vectors, captured before prediction. Four chains and finite Rhat/bulk/tail ESS required."
+      },
+      "local_pipeline_check": {
+        "groups": 3,
+        "chains": 2,
+        "draws": 20,
+        "tune": 50,
+        "target_accept": 0.99,
+        "diagnostic_scalar_parameters": 31,
+        "diagnostics_passed": false,
+        "statistical_acceptance": false,
+        "wall_seconds": 7.92,
+        "peak_rss_bytes": 380796928,
+        "swaps": 0,
+        "purpose": "Execute updated target propagation, full state diagnostic snapshot, saving and prediction; correctly rejected as statistical acceptance.",
+        "command": ".venv/bin/python bambi/examples/structured_covariance_benchmark.py ou marginal --groups 3 --draws 20 --tune 50 --chains 2 --target-accept 0.99"
+      }
     }
   }
 }

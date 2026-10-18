@@ -28,6 +28,7 @@ env:
 
 jobs:
   documentation:
+    if: github.event.action != 'edited' || github.event.changes.body == null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -55,6 +56,7 @@ jobs:
             docs/_site/
 
   formulae:
+    if: github.event.action != 'edited' || github.event.changes.body == null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -72,6 +74,7 @@ jobs:
           path: .cache/structured-acceptance/
 
   posterior:
+    if: github.event.action != 'edited' || github.event.changes.body == null
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -116,6 +119,7 @@ jobs:
           path: .cache/structured-acceptance/
 
   compatibility:
+    if: github.event.action != 'edited' || github.event.changes.body == null
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -155,6 +159,7 @@ jobs:
             .cache/structured-acceptance/
 
   reference:
+    if: github.event.action != 'edited' || github.event.changes.body == null
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -214,9 +219,9 @@ jobs:
           retention-days: 30
 
   benchmark:
-    if: inputs.extended == true || (github.event.action != 'synchronize' && contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->'))
+    if: inputs.extended == true || (github.event.action != 'synchronize' && (contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->') || contains(github.event.pull_request.body, '<!-- structured-benchmark-acceptance -->')))
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -235,12 +240,12 @@ jobs:
           if [ "$STRUCTURE" = ar1 ] || [ "$STRUCTURE" = ou ]; then sizes="50 250 1000"; fi
           for groups in $sizes; do
             for method in latent marginal; do
-              PYTENSOR_FLAGS="compiledir=$RUNNER_TEMP/structured-$STRUCTURE-$groups-$method" NUMBA_CACHE_DIR="$RUNNER_TEMP/numba-$STRUCTURE-$groups-$method" uv run --no-sync python bambi/examples/structured_covariance_benchmark.py "$STRUCTURE" "$method" --groups "$groups" --draws 1500 --tune 1500 --chains 4 2>&1 | tee ".cache/structured-acceptance/benchmark-$groups-$method.log" || status=1
+              PYTENSOR_FLAGS="compiledir=$RUNNER_TEMP/structured-$STRUCTURE-$groups-$method" NUMBA_CACHE_DIR="$RUNNER_TEMP/numba-$STRUCTURE-$groups-$method" uv run --no-sync python bambi/examples/structured_covariance_benchmark.py "$STRUCTURE" "$method" --groups "$groups" --draws 1500 --tune 2500 --chains 4 --target-accept 0.99 2>&1 | tee ".cache/structured-acceptance/benchmark-$groups-$method.log" || status=1
             done
           done
           if [ "$STRUCTURE" = cs ]; then
             for method in latent marginal; do
-              PYTENSOR_FLAGS="compiledir=$RUNNER_TEMP/structured-cs-homogeneous-$method" NUMBA_CACHE_DIR="$RUNNER_TEMP/numba-cs-homogeneous-$method" uv run --no-sync python bambi/examples/structured_covariance_benchmark.py cs "$method" --homogeneous --groups 50 --draws 1500 --tune 1500 --chains 4 2>&1 | tee ".cache/structured-acceptance/benchmark-homogeneous-$method.log" || status=1
+              PYTENSOR_FLAGS="compiledir=$RUNNER_TEMP/structured-cs-homogeneous-$method" NUMBA_CACHE_DIR="$RUNNER_TEMP/numba-cs-homogeneous-$method" uv run --no-sync python bambi/examples/structured_covariance_benchmark.py cs "$method" --homogeneous --groups 50 --draws 1500 --tune 2500 --chains 4 --target-accept 0.99 2>&1 | tee ".cache/structured-acceptance/benchmark-homogeneous-$method.log" || status=1
             done
           fi
           uv run --no-sync python bambi/examples/structured_covariance_benchmark.py "$STRUCTURE" assess 2>&1 | tee .cache/structured-acceptance/benchmark-assessment.log || status=1

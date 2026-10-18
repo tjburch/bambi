@@ -14,14 +14,16 @@ The implementation includes corrected `auto_scale=False` coefficient SD defaults
 
 See [the acceptance record](structured-covariance-validation.md) for commands, seeds, versions, diagnostics, resources, failed runs, and precise pending criteria.
 
-- 163 focused Bambi tests and 162 focused Formulae regressions pass; Black, serial pylint, actionlint, and diff whitespace checks pass.
+- 176 focused Bambi tests and 162 focused Formulae regressions pass; Black, serial pylint, actionlint, and diff whitespace checks pass.
 - Eight small Gaussian latent/marginal posterior pairs pass four-chain convergence and Monte Carlo agreement checks for covariance parameters, recovered states, full designated joint moments, and predictions. Six fixed-parameter glmmTMB references pass.
 - 72 short execution cases cover both inference paths and all four samplers, including both CS variants, negative AR(1), HSGP composition, and 3D US. They contain divergences and establish execution only.
-- PR CI runs the broader paired regression matrix, meaningful posterior comparisons, and reference checks. Extended jobs run 100-replication SBC/heldout coverage, actual prior-sensitivity refits, and representative converged cost/scaling/ESS benchmarks. Logs and raw results are retained on failure and on reruns.
+- Full Bambi regression CI passes Python 3.12/3.13 with both linkers (530 passed, one skipped per job before the latest 13 guard tests); Formulae passes Python 3.11–3.14 (288 passed, one skipped each). All eleven meaningful posterior pairs, including AR(1) on all four samplers and the repaired composition rerun, pass convergence and MCSE agreement. Documentation and six glmmTMB reference checks pass.
+- All seven prior-scale sensitivity refits converge; halving the scale produces moderate amplitude-prior dependence for six structures, so blanket robustness is not claimed. OU passes the bounded 100-replication SBC/heldout coverage check after independent artifact review and stricter reassessment of every saved fit. Six calibration cases remain pending.
+- The initial OU benchmark fails convergence at every size. Its failed records are preserved and provide no accepted efficiency evidence. A controlled adaptation-only rerun uses the same data, priors, seeds, retained draws and four serial chains, with target acceptance 0.99 and 2,500 tuning steps. Benchmark diagnostics now include all structured states and require four converged chains. Logs and raw results are retained on failure and on reruns.
 
-This remains a draft: GitHub jobs and their scientific artifacts have not yet been evaluated. No calibration, prior robustness, or useful large-case performance benefit is claimed. The PR marker below enables extended jobs before manual dispatch is registered on the default branch.
+This remains a draft: six calibration cases, representative converged performance/benefit, and the latest CI reruns remain pending. The initial extended run continues. The marker below starts a benchmark-only rerun before manual dispatch is registered on the default branch; it does not restart calibration or sensitivity.
 
-<!-- structured-full-acceptance -->
+<!-- structured-benchmark-acceptance -->
 
 ## Dependency coordination
 

@@ -40,6 +40,7 @@ parser.add_argument("--groups", type=int, default=8)
 parser.add_argument("--draws", type=int, default=10)
 parser.add_argument("--tune", type=int, default=10)
 parser.add_argument("--chains", type=int, default=1)
+parser.add_argument("--target-accept", type=float, default=0.99)
 parser.add_argument("--homogeneous", action="store_true")
 args = parser.parse_args()
 output = Path(".cache/structured-covariance")
@@ -124,6 +125,8 @@ if args.method == "assess":
     sys.exit(0 if passed else 1)
 if min(args.groups, args.draws, args.tune, args.chains) < 1:
     parser.error("Group and sampler sizes must be positive.")
+if not 0 < args.target_accept < 1:
+    parser.error("Target acceptance must be between zero and one.")
 
 seed = sum(map(ord, "structured-covariance-phase-benchmark"))
 rng = np.random.default_rng(seed)
@@ -193,6 +196,7 @@ result = nutpie.sample(
     chains=args.chains,
     cores=1,
     seed=seed,
+    target_accept=args.target_accept,
     progress_bar=False,
     save_warmup=False,
 )
@@ -204,6 +208,7 @@ result = model.backend._clean_results(result, True, False)  # pylint: disable=pr
 recover_effect(model, result, seed)
 recovered_at = time.perf_counter()
 result.to_netcdf(output / f"{name}.nc")
+diagnostic_posterior = result.posterior.to_dataset().copy(deep=False)
 model.predict(result, data=data.iloc[: min(8, len(data))], kind="response", random_seed=seed)
 xr.DataTree.from_dict(
     {
@@ -215,12 +220,12 @@ predicted_at = time.perf_counter()
 term = next(iter(model.parameters["mu"].structured_terms.values()))
 common_names = [
     name
-    for name in result.posterior.data_vars
-    if name != term.label and not name.endswith(("_correlation", "_correlation_cholesky"))
+    for name in diagnostic_posterior.data_vars
+    if not name.endswith(("_correlation", "_correlation_cholesky"))
 ]
-common = result.posterior.to_dataset()[common_names]
+common = diagnostic_posterior[common_names]
 if term.structure == "us":
-    correlation = result.posterior[term.label + "_correlation"]
+    correlation = diagnostic_posterior[term.label + "_correlation"]
     common["correlation"] = correlation.isel(
         {correlation.dims[-2]: 0, correlation.dims[-1]: 1}, drop=True
     )
@@ -229,8 +234,10 @@ diagnostic_data = xr.DataTree.from_dict(
 )
 diagnostic_error, diagnostics = azs.diagnose(diagnostic_data, return_diagnostics=True)
 write_json(output / f"{name}-diagnostics.json", diagnostics)
-bulk_ess = min(float(value.min()) for value in azs.ess(common).data_vars.values())
-tail_ess = min(float(value.min()) for value in azs.ess(common, method="tail").data_vars.values())
+bulk, tail, rhat = azs.ess(common), azs.ess(common, method="tail"), azs.rhat(common)
+bulk_ess = min(float(value.min()) for value in bulk.data_vars.values())
+tail_ess = min(float(value.min()) for value in tail.data_vars.values())
+rhat_max = max(float(value.max()) for value in rhat.data_vars.values())
 covariance_names = [name for name in common if name.startswith(term.label + "_")]
 if "correlation" in common:
     covariance_names.append("correlation")
@@ -239,8 +246,12 @@ covariance_ess = {
 }
 covariance_ess_min = min(covariance_ess.values())
 diagnostics_passed = (
-    args.chains >= 2
+    args.chains >= 4
     and not diagnostic_error
+    and all(
+        np.isfinite(value).all() for data in (bulk, tail, rhat) for value in data.data_vars.values()
+    )
+    and rhat_max <= 1.01
     and bulk_ess >= 100 * args.chains
     and tail_ess >= 100 * args.chains
 )
@@ -269,6 +280,10 @@ record = dict(
     * (1 if platform.system() == "Darwin" else 1024),
     divergences=int(result.sample_stats["diverging"].sum()),
     diagnostics_passed=diagnostics_passed,
+    rhat_max=rhat_max,
+    diagnostic_scalar_parameters=sum(
+        value.size // (args.chains * args.draws) for value in common.data_vars.values()
+    ),
     ess_bulk_min=bulk_ess,
     ess_tail_min=tail_ess,
     total_inference_seconds=total_inference,

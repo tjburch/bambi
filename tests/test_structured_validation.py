@@ -69,7 +69,13 @@ def test_convergence_requires_tail_ess(tmp_path, monkeypatch):
         "diagnose",
         lambda *args, **kwargs: (False, {"bfmi": {"bfmi_values": np.ones(4)}}),
     )
-    monkeypatch.setattr(validation.azs, "summary", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(
+        validation.azs,
+        "summary",
+        lambda *args, **kwargs: xr.Dataset(
+            {"effect": ("summary", [0.0])}, coords={"summary": ["mean"]}
+        ),
+    )
     monkeypatch.setattr(validation.azs, "rhat", lambda *args, **kwargs: xr.Dataset({"effect": 1.0}))
     monkeypatch.setattr(
         validation.azs,
@@ -142,7 +148,13 @@ def test_convergence_requires_finite_bfmi(tmp_path, monkeypatch, invalid):
         "diagnose",
         lambda *args, **kwargs: (False, {"bfmi": {"bfmi_values": [invalid, 1, 1, 1]}}),
     )
-    monkeypatch.setattr(validation.azs, "summary", lambda *args, **kwargs: pd.DataFrame())
+    monkeypatch.setattr(
+        validation.azs,
+        "summary",
+        lambda *args, **kwargs: xr.Dataset(
+            {"effect": ("summary", [0.0])}, coords={"summary": ["mean"]}
+        ),
+    )
     monkeypatch.setattr(validation.azs, "rhat", lambda *args, **kwargs: xr.Dataset({"effect": 1.0}))
     monkeypatch.setattr(validation.azs, "ess", lambda *args, **kwargs: xr.Dataset({"effect": 1000}))
     assert not validation.diagnose(idata, tmp_path)["passed"]
@@ -157,6 +169,34 @@ def test_monitored_excludes_fixed_values_without_roundoff():
     )
     idata = xr.DataTree.from_dict({"posterior": posterior})
     assert set(validation.monitored(idata)) == {"effect"}
+
+
+def test_summary_csv_keeps_coefficient_coordinate_order(tmp_path):
+    rng = np.random.default_rng(sum(map(ord, "structured-summary-coordinate-order")))
+    values = np.array([[0, 1, 2], [10, 11, 12]]) + rng.normal(0, 0.1, size=(4, 100, 2, 3))
+    variables = xr.Dataset(
+        {
+            "scale": (("chain", "draw", "coefficient"), rng.normal(size=(4, 100, 3))),
+            "effect": (("chain", "draw", "group", "coefficient"), values),
+            "Intercept": (("chain", "draw"), rng.normal(size=(4, 100))),
+        },
+        coords={"group": ["g0", "g1"], "coefficient": ["a", "b", "c"]},
+    )
+    path = tmp_path / "summary.csv"
+    validation.summary_frame(variables).to_csv(path)
+    frame = pd.read_csv(path, index_col=0)
+    for group in variables.group.values:
+        for coefficient in variables.coefficient.values:
+            draws = variables.effect.sel(group=group, coefficient=coefficient)
+            row = frame.loc[f"effect[{group}, {coefficient}]"]
+            bounds = np.asarray(validation.azs.hdi(draws, prob=0.94))
+            assert row["mean"] == pytest.approx(float(draws.mean()))
+            np.testing.assert_allclose(row[["hdi94_lb", "hdi94_ub"]], bounds)
+    assert frame.loc["Intercept", "mean"] == pytest.approx(float(variables.Intercept.mean()))
+    for coefficient in variables.coefficient.values:
+        assert frame.loc[f"scale[{coefficient}]", "mean"] == pytest.approx(
+            float(variables.scale.sel(coefficient=coefficient).mean())
+        )
 
 
 @pytest.mark.parametrize(

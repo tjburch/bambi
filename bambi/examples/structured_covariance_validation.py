@@ -213,14 +213,34 @@ def diagnostic_statistics(idata):
     return statistics
 
 
+def summary_frame(variables):
+    """Keep coordinate labels attached to their summary values."""
+    summaries = azs.summary(variables, ci_prob=0.94, ci_kind="hdi", fmt="xarray", round_to="none")
+    frames = []
+    for name, variable in variables.data_vars.items():
+        dimensions = [dim for dim in variable.dims if dim not in ("chain", "draw")]
+        values = summaries[name].transpose(*dimensions, "summary")
+        if not dimensions:
+            frame = pd.DataFrame([values.values], index=[name], columns=values.summary.values)
+        else:
+            frame = values.to_series().unstack("summary")
+            labels = []
+            for index in frame.index:
+                coordinates = (index,) if len(dimensions) == 1 else index
+                labels.append(f"{name}[{', '.join(map(str, coordinates))}]")
+            frame.index = labels
+            frame = frame.reindex(columns=values.summary.values)
+        frames.append(frame)
+    return pd.concat(frames)
+
+
 def diagnose(idata, output):
     variables = monitored(idata)
     diagnostic_data = xr.DataTree.from_dict(
         {"posterior": variables, "sample_stats": diagnostic_statistics(idata)}
     )
     failed, details = azs.diagnose(diagnostic_data, return_diagnostics=True)
-    summary = azs.summary(variables, ci_prob=0.94, ci_kind="hdi")
-    summary.to_csv(output / "summary.csv")
+    summary_frame(variables).to_csv(output / "summary.csv")
     rhat, bulk = azs.rhat(variables), azs.ess(variables)
     tail = azs.ess(variables, method="tail")
     rhat_max = max(float(value.max()) for value in rhat.data_vars.values())

@@ -81,6 +81,111 @@ def test_monitored_excludes_fixed_values_without_roundoff():
     assert set(validation.monitored(idata)) == {"effect"}
 
 
+@pytest.mark.parametrize(
+    ("composition", "missing"),
+    [(False, "Intercept"), (False, "x"), (False, "sigma"), (True, "sigma_z")],
+)
+def test_comparison_requires_population_parameters(tmp_path, monkeypatch, composition, missing):
+    names = {
+        "Intercept",
+        "x",
+        "sigma",
+        "effect",
+        "effect_sd",
+        "sigma_Intercept",
+        "sigma_z",
+        "1|team_sigma",
+        "1|team",
+        "diag(0 + x, by=team)",
+        "sigma_diag(1, by=team)",
+    }
+    values = np.arange(20).reshape(2, 10)
+    posterior = xr.Dataset({name: (("chain", "draw"), values) for name in names - {missing}})
+    idata = xr.DataTree.from_dict({"posterior": posterior})
+    monkeypatch.setattr(validation.xr, "open_datatree", lambda *args, **kwargs: idata)
+    (tmp_path / "command.json").write_text(
+        json.dumps({"configuration": {"composition": composition, "structure": "diag"}})
+    )
+    with pytest.raises(ValueError, match="lacks expected stochastic variables"):
+        validation.comparison_quantities(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("structure", "name"),
+    [
+        ("ar1", "effect_rho"),
+        ("ou", "effect_decay"),
+        ("cs", "effect_rho"),
+        ("cs_homogeneous", "effect_rho"),
+        ("us", "correlation"),
+        ("us3", "correlation"),
+    ],
+)
+def test_comparison_rejects_constant_covariance_parameter(tmp_path, monkeypatch, structure, name):
+    values = np.arange(20).reshape(2, 10)
+    posterior = xr.Dataset(
+        {
+            key: (("chain", "draw"), values)
+            for key in ("Intercept", "x", "sigma", "effect", "effect_sd")
+        }
+    )
+    if name == "correlation":
+        size = 3 if structure == "us3" else 2
+        posterior["effect_correlation"] = xr.DataArray(
+            np.broadcast_to(np.eye(size), (2, 10, size, size)),
+            dims=("chain", "draw", "row", "column"),
+        )
+    else:
+        posterior[name] = xr.zeros_like(posterior.effect_sd)
+    idata = xr.DataTree.from_dict({"posterior": posterior})
+    monkeypatch.setattr(validation.xr, "open_datatree", lambda *args, **kwargs: idata)
+    (tmp_path / "command.json").write_text(
+        json.dumps({"configuration": {"composition": False, "structure": structure}})
+    )
+    with pytest.raises(ValueError, match=f"lacks expected stochastic variables: .*{name}"):
+        validation.comparison_quantities(tmp_path)
+
+
+@pytest.mark.parametrize("defect", ["missing", "constant", "scalar_count"])
+def test_calibration_requires_all_simulated_quantities(tmp_path, monkeypatch, defect):
+    directory = tmp_path / "replicate-1" / "marginal"
+    directory.mkdir(parents=True)
+    configuration = dict(
+        seed=100,
+        structure="ou",
+        groups=1,
+        prior_draw=True,
+        prior_scale=1,
+        composition=False,
+        method="marginal",
+    )
+    truth = dict(Intercept=0, x=0.5, sigma=0.3, effect_sd=[0.6], effect_decay=0.4)
+    (directory / "result.json").write_text('{"passed": true}')
+    (directory / "command.json").write_text(json.dumps({"configuration": configuration}))
+    (directory / "truth.json").write_text(json.dumps({"parameters": truth, "effects": [0, 1]}))
+    values = np.arange(40).reshape(2, 20)
+    posterior = xr.Dataset({name: (("chain", "draw"), values) for name in truth})
+    posterior["effect"] = xr.DataArray(
+        np.stack([values, values], axis=-1), dims=("chain", "draw", "state")
+    )
+    if defect == "missing":
+        posterior = posterior.drop_vars("effect_decay")
+    elif defect == "constant":
+        posterior["effect_decay"] = xr.zeros_like(posterior.effect_decay)
+    else:
+        posterior["effect_sd"] = xr.DataArray(
+            np.stack([values, values], axis=-1), dims=("chain", "draw", "coefficient")
+        )
+    idata = xr.DataTree.from_dict({"posterior": posterior})
+    monkeypatch.setattr(validation.xr, "open_datatree", lambda *args, **kwargs: idata)
+    monkeypatch.setattr(validation.azs, "ess", lambda *args, **kwargs: 1000)
+    monkeypatch.setattr(validation.azs, "hdi", lambda *args, **kwargs: [-1, 1])
+    with pytest.raises(ValueError, match="Calibration (lacks expected|has incorrect scalar count)"):
+        validation.calibration(
+            Namespace(input=tmp_path, output=tmp_path / "assessment", replicates=100)
+        )
+
+
 @pytest.mark.parametrize("structure", ["ar1", "ou", "diag", "cs", "cs_homogeneous", "us"])
 def test_prior_simulations_hold_out_new_time_or_slope(structure):
     data, _, _, holdout = validation.simulate(structure, 2, validation.SEED, prior_draw=True)

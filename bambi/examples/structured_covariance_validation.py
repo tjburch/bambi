@@ -376,6 +376,36 @@ def fit(args):
 def comparison_quantities(path):
     idata = xr.open_datatree(path / "posterior.nc").load()
     variables = monitored(idata)
+    configuration = json.loads((path / "command.json").read_text())["configuration"]
+    structure = configuration["structure"]
+    required = {"Intercept", "x", "effect", "effect_sd"}
+    if structure == "ou":
+        required.add("effect_decay")
+    elif structure in ("ar1", "cs", "cs_homogeneous"):
+        required.add("effect_rho")
+    elif structure in ("us", "us3"):
+        required.add("correlation")
+    if configuration["composition"]:
+        required.update(
+            {
+                "sigma_Intercept",
+                "sigma_z",
+                "1|team_sigma",
+                "1|team",
+                "diag(0 + x, by=team)",
+                "sigma_diag(1, by=team)",
+            }
+        )
+    else:
+        required.add("sigma")
+    missing = required.difference(variables)
+    for name in required.intersection(variables):
+        if not bool(
+            (variables[name].max(("chain", "draw")) != variables[name].min(("chain", "draw"))).all()
+        ):
+            missing.add(name)
+    if missing:
+        raise ValueError(f"Comparison lacks expected stochastic variables: {sorted(missing)}")
     quantities = variables.copy()
     for name, value in variables.data_vars.items():
         quantities[name + "_second_moment"] = value**2
@@ -394,8 +424,6 @@ def comparison_quantities(path):
         values[..., :, None] * values[..., None, :],
         dims=("chain", "draw", "prediction_row", "prediction_column"),
     )
-    configuration = json.loads((path / "command.json").read_text())["configuration"]
-    structure = configuration["structure"]
     sd = idata.posterior.effect_sd.values
     if structure in ("ar1", "ou"):
         grid = np.array([0, 1, 3, 4, 6])
@@ -560,25 +588,24 @@ def calibration(args):
         truth = simulation["parameters"]
         idata = xr.open_datatree(path / "posterior.nc").load()
         variables = monitored(idata)
-        for name in (
-            "Intercept",
-            "x",
-            "sigma",
-            "effect_sd",
-            "effect_rho",
-            "effect_decay",
-            "correlation",
-            "effect",
-        ):
-            if name not in variables:
-                continue
-            key = "correlation" if name == "effect_rho" else name
+        for key, actual in {**truth, "effect": simulation["effects"]}.items():
+            name = (
+                "effect_rho"
+                if key == "correlation" and configuration["structure"] not in ("us", "us3")
+                else key
+            )
+            if name not in variables or not bool(
+                (
+                    variables[name].max(("chain", "draw")) != variables[name].min(("chain", "draw"))
+                ).all()
+            ):
+                raise ValueError(f"Calibration lacks expected stochastic variable {name}: {path}")
             values = variables[name].values.reshape(
                 variables.sizes["chain"], variables.sizes["draw"], -1
             )
-            actual = np.asarray(simulation["effects"] if name == "effect" else truth[key]).reshape(
-                -1
-            )
+            actual = np.asarray(actual).reshape(-1)
+            if values.shape[-1] != actual.size:
+                raise ValueError(f"Calibration has incorrect scalar count for {name}: {path}")
             for index in range(values.shape[-1]):
                 label = f"{name}[{index}]" if len(actual) > 1 else name
                 draws = xr.DataArray(values[..., index], dims=("chain", "draw"))

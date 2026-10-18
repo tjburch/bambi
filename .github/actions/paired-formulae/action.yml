@@ -1,0 +1,38 @@
+name: Checkout paired Formulae
+description: Require an immutable paired development commit, separate from release dependencies
+outputs:
+  path:
+    description: Formulae checkout path
+    value: .cache/formulae
+  commit:
+    description: Verified Formulae commit
+    value: ${{ steps.pin.outputs.commit }}
+runs:
+  using: composite
+  steps:
+    - id: pin
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import json
+        import os
+        import re
+        from pathlib import Path
+        pin = json.loads(Path('.ci/formulae.json').read_text())
+        if not re.fullmatch(r'[0-9a-f]{40}', pin.get('commit') or ''):
+            raise SystemExit('Set .ci/formulae.json to the published exact Formulae commit before CI. Branch names and uncommitted changes are not accepted.')
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', pin['repository']):
+            raise SystemExit('Invalid Formulae repository.')
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            output.write(f"repository={pin['repository']}\ncommit={pin['commit']}\n")
+        PY
+    - uses: actions/checkout@v5
+      with:
+        repository: ${{ steps.pin.outputs.repository }}
+        ref: ${{ steps.pin.outputs.commit }}
+        path: .cache/formulae
+        persist-credentials: false
+    - shell: bash
+      env:
+        FORMULAE_COMMIT: ${{ steps.pin.outputs.commit }}
+      run: test "$(git -C .cache/formulae rev-parse HEAD)" = "$FORMULAE_COMMIT"

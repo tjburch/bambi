@@ -61,6 +61,7 @@ packages = [
     "bambi.interpret",
     "bambi.priors",
     "bambi.terms",
+    "bambi.structured",
 ]
 
 

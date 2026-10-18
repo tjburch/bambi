@@ -1,0 +1,290 @@
+name: Structured covariance acceptance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+    paths:
+      - 'bambi/**'
+      - 'tests/**'
+      - '.ci/**'
+      - '.github/actions/**'
+      - '.github/workflows/structured-covariance.yml'
+      - 'pyproject.toml'
+  workflow_dispatch:
+    inputs:
+      extended:
+        description: Run calibration, sensitivity refits, and larger benchmarks
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  OMP_NUM_THREADS: '1'
+  OPENBLAS_NUM_THREADS: '1'
+  MKL_NUM_THREADS: '1'
+  PYTHONNOUSERSITE: '1'
+
+jobs:
+  documentation:
+    if: github.event.action != 'edited' || github.event.changes.body == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.8.26
+      - name: Build API documentation and structured covariance guide
+        run: |
+          set -o pipefail
+          uv pip install 'quartodoc @ git+https://github.com/machow/quartodoc.git@fc9f3cca3c2f930e53c6c7079e41333a13ed0461' 'griffe>=1,<2' sphobjinv 2>&1 | tee .cache/structured-acceptance/docs-install.log
+          uv pip freeze > .cache/structured-acceptance/docs-environment.txt
+          cd docs
+          uv run --no-sync python -m quartodoc build --verbose 2>&1 | tee ../.cache/structured-acceptance/docs-api.log
+          uv run --no-sync python -m quartodoc interlinks 2>&1 | tee ../.cache/structured-acceptance/docs-interlinks.log
+          quarto render structured_covariance.qmd 2>&1 | tee ../.cache/structured-acceptance/docs-render.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: documentation-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .cache/structured-acceptance/
+            docs/_site/
+
+  formulae:
+    if: github.event.action != 'edited' || github.event.changes.body == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Formulae regressions
+        run: |
+          set -o pipefail
+          uv run --no-sync pytest -q .cache/formulae/tests --junitxml=.cache/structured-acceptance/formulae.xml 2>&1 | tee .cache/structured-acceptance/formulae.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: formulae-regression-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .cache/structured-acceptance/
+
+  posterior:
+    if: github.event.action != 'edited' || github.event.changes.body == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - {structure: ar1, sampler: nutpie, composition: ''}
+          - {structure: ou, sampler: nutpie, composition: ''}
+          - {structure: diag, sampler: nutpie, composition: ''}
+          - {structure: cs, sampler: nutpie, composition: ''}
+          - {structure: cs_homogeneous, sampler: nutpie, composition: ''}
+          - {structure: us, sampler: nutpie, composition: ''}
+          - {structure: us3, sampler: nutpie, composition: ''}
+          - {structure: ar1, sampler: nutpie, composition: '--composition'}
+          - {structure: ar1, sampler: pymc, composition: ''}
+          - {structure: ar1, sampler: numpyro, composition: ''}
+          - {structure: ar1, sampler: blackjax, composition: ''}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Latent and marginal posterior acceptance
+        env:
+          STRUCTURE: ${{ matrix.structure }}
+          SAMPLER: ${{ matrix.sampler }}
+          COMPOSITION: ${{ matrix.composition }}
+        run: |
+          set -o pipefail
+          status=0
+          tune=1500
+          if [ -n "$COMPOSITION" ]; then tune=2500; fi
+          for method in latent marginal; do
+            uv run --no-sync python bambi/examples/structured_covariance_validation.py fit "$STRUCTURE" "$method" --sampler "$SAMPLER" $COMPOSITION --draws 2000 --tune "$tune" --chains 4 --output ".cache/structured-acceptance/$method" 2>&1 | tee ".cache/structured-acceptance/$method.log" || status=1
+          done
+          uv run --no-sync python bambi/examples/structured_covariance_validation.py compare .cache/structured-acceptance/latent .cache/structured-acceptance/marginal --output .cache/structured-acceptance/comparison 2>&1 | tee .cache/structured-acceptance/comparison.log || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: posterior-${{ matrix.structure }}-${{ matrix.sampler }}-${{ matrix.composition && 'composition' || 'base' }}-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .cache/structured-acceptance/
+
+  compatibility:
+    if: github.event.action != 'edited' || github.event.changes.body == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        sampler: [pymc, nutpie, numpyro, blackjax]
+        method: [latent, marginal]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Four-sampler execution coverage
+        env:
+          METHOD: ${{ matrix.method }}
+          SAMPLER: ${{ matrix.sampler }}
+        run: |
+          set -o pipefail
+          mkdir -p .cache/structured-covariance
+          status=0
+          for wrapper in ar1 ou diag cs us; do
+            uv run --no-sync python bambi/examples/structured_covariance_smoke.py "$wrapper" "$METHOD" "$SAMPLER" 2>&1 | tee ".cache/structured-covariance/$wrapper.log" || status=1
+          done
+          for variant in homogeneous negative hsgp three; do
+            wrapper=ar1
+            if [ "$variant" = homogeneous ]; then wrapper=cs; fi
+            if [ "$variant" = three ]; then wrapper=us; fi
+            uv run --no-sync python bambi/examples/structured_covariance_smoke.py "$wrapper" "$METHOD" "$SAMPLER" "$variant" 2>&1 | tee ".cache/structured-covariance/$variant.log" || status=1
+          done
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compatibility-${{ matrix.method }}-${{ matrix.sampler }}-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .cache/structured-covariance/
+            .cache/structured-acceptance/
+
+  reference:
+    if: github.event.action != 'edited' || github.event.changes.body == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Install reference toolchain
+        run: |
+          set -o pipefail
+          sudo apt-get update 2>&1 | tee .cache/structured-acceptance/reference-install.log
+          sudo apt-get install -y r-base r-cran-glmmtmb r-cran-jsonlite 2>&1 | tee -a .cache/structured-acceptance/reference-install.log
+      - name: Fixed-parameter glmmTMB reference
+        run: |
+          set -o pipefail
+          Rscript --vanilla bambi/examples/structured_covariance_reference.R .cache/structured-acceptance/reference 2>&1 | tee .cache/structured-acceptance/reference-R.log
+          uv run --no-sync python bambi/examples/structured_covariance_reference.py .cache/structured-acceptance/reference 2>&1 | tee .cache/structured-acceptance/reference-python.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: glmmTMB-reference-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .cache/structured-acceptance/
+
+  calibration:
+    # The PR-body marker works before workflow_dispatch is on the default branch.
+    if: inputs.extended == true || (github.event.action != 'synchronize' && contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        structure: [ar1, ou, diag, cs, cs_homogeneous, us, us3]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Independent prior-draw calibration and heldout coverage
+        env:
+          STRUCTURE: ${{ matrix.structure }}
+        run: |
+          set -o pipefail
+          status=0
+          seed_base=$(uv run --no-sync python -c 'print(sum(map(ord, "structured-covariance-calibration")))')
+          for replication in $(seq 1 100); do
+            seed=$((seed_base + replication))
+            result_dir=".cache/structured-acceptance/replicate-$replication/marginal"
+            mkdir -p "$result_dir"
+            uv run --no-sync python bambi/examples/structured_covariance_validation.py fit "$STRUCTURE" marginal --prior-draw --seed "$seed" --draws 1500 --tune 1500 --chains 4 --output "$result_dir" > "$result_dir/run.log" 2>&1 || status=1
+          done
+          uv run --no-sync python bambi/examples/structured_covariance_validation.py calibration .cache/structured-acceptance --replicates 100 --output .cache/structured-acceptance/calibration 2>&1 | tee .cache/structured-acceptance/calibration.log || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: calibration-${{ matrix.structure }}-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .cache/structured-acceptance/
+          retention-days: 30
+
+  benchmark:
+    if: inputs.extended == true || (github.event.action != 'synchronize' && (contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->') || contains(github.event.pull_request.body, '<!-- structured-benchmark-acceptance -->')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        structure: [ar1, ou, diag, cs, us]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Scaling and complete inference costs
+        env:
+          STRUCTURE: ${{ matrix.structure }}
+        run: |
+          set -o pipefail
+          status=0
+          sizes="50"
+          if [ "$STRUCTURE" = ar1 ] || [ "$STRUCTURE" = ou ]; then sizes="50 250 1000"; fi
+          for groups in $sizes; do
+            for method in latent marginal; do
+              PYTENSOR_FLAGS="compiledir=$RUNNER_TEMP/structured-$STRUCTURE-$groups-$method" NUMBA_CACHE_DIR="$RUNNER_TEMP/numba-$STRUCTURE-$groups-$method" uv run --no-sync python bambi/examples/structured_covariance_benchmark.py "$STRUCTURE" "$method" --groups "$groups" --draws 1500 --tune 2500 --chains 4 --target-accept 0.99 2>&1 | tee ".cache/structured-acceptance/benchmark-$groups-$method.log" || status=1
+            done
+          done
+          if [ "$STRUCTURE" = cs ]; then
+            for method in latent marginal; do
+              PYTENSOR_FLAGS="compiledir=$RUNNER_TEMP/structured-cs-homogeneous-$method" NUMBA_CACHE_DIR="$RUNNER_TEMP/numba-cs-homogeneous-$method" uv run --no-sync python bambi/examples/structured_covariance_benchmark.py cs "$method" --homogeneous --groups 50 --draws 1500 --tune 2500 --chains 4 --target-accept 0.99 2>&1 | tee ".cache/structured-acceptance/benchmark-homogeneous-$method.log" || status=1
+            done
+          fi
+          uv run --no-sync python bambi/examples/structured_covariance_benchmark.py "$STRUCTURE" assess 2>&1 | tee .cache/structured-acceptance/benchmark-assessment.log || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: benchmark-${{ matrix.structure }}-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .cache/structured-covariance/
+            .cache/structured-acceptance/
+
+  sensitivity:
+    if: inputs.extended == true || (github.event.action != 'synchronize' && contains(github.event.pull_request.body, '<!-- structured-full-acceptance -->'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        structure: [ar1, ou, diag, cs, cs_homogeneous, us, us3]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/structured-environment
+      - name: Actual prior-sensitivity refits
+        env:
+          STRUCTURE: ${{ matrix.structure }}
+        run: |
+          set -o pipefail
+          status=0
+          for scale in 1 0.5 2; do
+            uv run --no-sync python bambi/examples/structured_covariance_validation.py fit "$STRUCTURE" marginal --prior-scale "$scale" --draws 1500 --tune 1500 --chains 4 --output ".cache/structured-acceptance/scale-$scale" 2>&1 | tee ".cache/structured-acceptance/scale-$scale.log" || status=1
+          done
+          uv run --no-sync python bambi/examples/structured_covariance_validation.py sensitivity .cache/structured-acceptance/scale-1 .cache/structured-acceptance/scale-0.5 .cache/structured-acceptance/scale-2 --output .cache/structured-acceptance/sensitivity 2>&1 | tee .cache/structured-acceptance/sensitivity.log || status=1
+          exit "$status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sensitivity-${{ matrix.structure }}-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: .cache/structured-acceptance/

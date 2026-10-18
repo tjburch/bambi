@@ -14,6 +14,7 @@ from arviz_plots import plot_dist
 from arviz_stats import residual_r2
 from pymc.backends.arviz import apply_function_over_dataset, coords_and_dims_for_inferencedata
 from pymc.model.transform.conditioning import remove_value_transforms
+from numpy.random import RandomState
 
 from bambi.backend import PyMCModel
 from bambi.config import config
@@ -27,6 +28,13 @@ from bambi.model_components import (
 )
 from bambi.priors import Prior, PriorScaler
 from bambi.transformations import transformations_namespace
+from bambi.structured import FORMULA_WRAPPERS
+from bambi.structured.inference import (
+    normalize_mapping,
+    normalize_prior_updates,
+    resolve_plan,
+    warn_confounding,
+)
 from bambi.utils import (
     as_dataset,
     clean_formula_lhs,
@@ -135,6 +143,13 @@ class Model:
         # attributes that are set later
         self._components = {}  # Constant and Distributional components
         self.built = False  # build()
+        self.structured_plan = {
+            "requested": "latent",
+            "effective": "latent",
+            "selected": None,
+            "remaining": [],
+            "fallback": None,
+        }
 
         # build() will loop over this, calling _set_priors()
         self._added_priors = {}
@@ -154,10 +169,11 @@ class Model:
             raise ValueError("'data' must be a pandas DataFrame.")
 
         # Some columns are converted to categorical
+        self._structured_data = data
         self.data = with_categorical_cols(data, categorical)
 
         # Handle priors
-        priors = {} if priors is None else deepcopy(priors)
+        priors = {} if priors is None else normalize_mapping(deepcopy(priors))
 
         # Obtain design matrices and related objects.
         na_action = "drop" if dropna else "error"
@@ -169,6 +185,34 @@ class Model:
 
         if isinstance(extra_namespace, dict):
             additional_namespace.update(extra_namespace)
+
+        referenced = set()
+        for formula_text in self.formula.get_all_formulas():
+            formula_text = (
+                formula_text
+                if formula_text == self.formula.main
+                else clean_formula_lhs(formula_text)
+            )
+            referenced |= fm.model_description(
+                formula_text, formula_wrappers=FORMULA_WRAPPERS
+            ).var_names
+        columns = sorted(referenced & set(self.data.columns))
+        incomplete = self.data[columns].isna().any(axis=1)
+        if incomplete.any():
+            if not dropna:
+                raise ValueError(
+                    f"'data' contains {incomplete.sum()} incomplete rows "
+                    f"in referenced columns: {columns}."
+                )
+            _log.info(
+                "Automatically removing %s/%s rows from the dataset.",
+                incomplete.sum(),
+                len(self.data),
+            )
+            self.data = self.data.loc[~incomplete].copy()
+            self._structured_data = self._structured_data.loc[~incomplete]
+        if len(self.data.index) == 0:
+            raise ValueError("No observations remain after removing missing values.")
 
         # Create family
         self._set_family(family, link)
@@ -186,11 +230,17 @@ class Model:
                 na_action,
                 1,
                 additional_namespace,
+                formula_wrappers=FORMULA_WRAPPERS,
             )
             design = remove_common_intercept(design)
         else:
             design = fm.design_matrices(
-                self.formula.main, self.data, na_action, 1, additional_namespace
+                self.formula.main,
+                self.data,
+                na_action,
+                1,
+                additional_namespace,
+                formula_wrappers=FORMULA_WRAPPERS,
             )
 
         if design.response is None:
@@ -233,6 +283,7 @@ class Model:
                 na_action,
                 1,
                 additional_namespace,
+                formula_wrappers=FORMULA_WRAPPERS,
             )
 
             # If priors were not passed, pass an empty dictionary
@@ -265,12 +316,16 @@ class Model:
 
         # Build priors
         self._build_priors()
+        warn_confounding(self)
+        del self._structured_data
 
     def _warn_deprecated_c_response(self):
         if self.family.name not in ("multinomial", "dirichlet_multinomial"):
             return
 
-        response = fm.model_description(self.formula.main).response
+        response = fm.model_description(
+            self.formula.main, formula_wrappers=FORMULA_WRAPPERS
+        ).response
         if response is None or len(response.term.components) != 1:
             return
 
@@ -301,6 +356,8 @@ class Model:
         cores=None,
         random_seed=None,
         nuts=None,
+        structured_method="auto",
+        marginalize=None,
         **kwargs,
     ):
         """Fit the model using PyMC
@@ -369,6 +426,15 @@ class Model:
         nuts : dict, optional
             A dictionary of NUTS sampler settings passed directly to `pm.sample(nuts=...)`, e.g.
             `model.fit(nuts={"target_accept": 0.9, "max_treedepth": 12})`.
+        structured_method : {"auto", "latent", "marginal"}, optional
+            Inference for structured Gaussian effects. ``"auto"`` integrates one eligible
+            Gaussian mean effect, choosing the largest latent coefficient count and breaking
+            ties by component-qualified canonical name. ``"latent"`` samples every effect.
+            ``"marginal"`` requires an eligible effect. Defaults to ``"auto"``.
+        marginalize : str or None, optional
+            Select exactly one structured effect by canonical formula, equivalent spelling,
+            or unambiguous alias. Component-qualified names resolve ambiguity. A selector
+            is incompatible with ``structured_method="latent"``.
         kwargs : dict
             For other kwargs see the documentation for ``pm.sample()``.
 
@@ -402,6 +468,14 @@ class Model:
             else:
                 nuts = {**legacy, **nuts}
 
+        plan = resolve_plan(self, structured_method, marginalize)
+        if plan["selected"] and inference_method.lower() in ("vi", "laplace"):
+            raise ValueError("Structured marginal inference requires a NUTS sampler.")
+        if plan != self.structured_plan:
+            self.structured_plan = plan
+            self.built = False
+        if plan["remaining"] or plan["selected"] or structured_method == "marginal":
+            _log.info("Structured inference: %s", plan)
         if not self.built:
             self.build()
 
@@ -462,6 +536,7 @@ class Model:
         group_specific : Prior, int, float or None, optional
             A prior specification to apply to all group specific terms included in the model.
         """
+        priors = normalize_prior_updates(self, priors)
         if priors is not None:
             # Validate before touching any state, so a rejected call leaves the model as it was.
             self._check_prior_names(priors)
@@ -534,10 +609,14 @@ class Model:
 
         Runs during `Model._build_priors()`.
         """
+        priors = normalize_mapping(priors)
         # Arguments `common` and `group_specific` only affect the parent component.
         # Same names could also be used in a nested dictionary for other distributional components.
         parent_name = self.family.likelihood.parent
         parent_component = self._components[parent_name]
+        parent_component.check_shared_structured_priors(
+            {"common": common, "group_specific": group_specific}
+        )
 
         if common is not None:
             for term in parent_component.common_terms.values():
@@ -627,6 +706,7 @@ class Model:
         """
         if not isinstance(aliases, dict):
             raise ValueError(f"'aliases' must be a dictionary, not a {type(aliases)}.")
+        aliases = normalize_mapping(aliases)
 
         # Keep track of any passed aliases that are not used
         missing_names = []
@@ -980,6 +1060,14 @@ class Model:
             `observed_data`.
         """
         self._check_built()
+        if self.structured_plan["selected"] is not None:
+            backend, plan = self.backend, self.structured_plan
+            try:
+                self.structured_plan = resolve_plan(self, "latent", None)
+                self.build()
+                return self.prior_predictive(draws, var_names, omit_offsets, random_seed)
+            finally:
+                self.backend, self.structured_plan = backend, plan
 
         if var_names is None:
             variables = self.backend.model.unobserved_RVs + self.backend.model.observed_RVs
@@ -1240,7 +1328,7 @@ class Model:
         coords, dims = coords_and_dims_for_inferencedata(umodel)
 
         det_names = {d.name for d in pymc_model.deterministics}
-        posterior = as_dataset(idata["posterior"])
+        posterior = as_dataset(idata["posterior"]).copy()
 
         target_rvs = [
             rv for rv in umodel.free_RVs if rv.name not in det_names and rv.name in posterior
@@ -1301,6 +1389,10 @@ class Model:
         hsgp_dict = {}  # To store the HSGP contributions (they are added to the posterior dataset)
         response_dim = "__obs__"
 
+        if any(component.structured_terms for component in self.conditional_parameters.values()):
+            if isinstance(random_seed, RandomState):
+                random_seed = int(random_seed.randint(0, 2**32))
+            random_seed = np.random.default_rng(random_seed)
         for name, component in self.conditional_parameters.items():
             var_name = component.alias if component.alias else name
             means_dict[var_name] = component.predict(
@@ -1313,7 +1405,7 @@ class Model:
             )
 
         # Build the updated posterior dataset from the DataTree child
-        posterior = as_dataset(idata["posterior"])
+        posterior = as_dataset(idata["posterior"]).copy()
 
         # Drop var/dim if already present. Needed for out-of-sample predictions.
         for var_name in means_dict:
@@ -1654,6 +1746,7 @@ def make_priors_summary(component: DistributionalComponent) -> str:
 
     # Group-specific effects
     priors_group = [prior_repr(term) for term in component.group_specific_terms.values()]
+    priors_group += [str(term) for term in component.structured_terms.values()]
 
     # Offsets
     offsets = [f"{term.name} ~ 1" for term in component.offset_terms.values()]

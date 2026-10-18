@@ -79,6 +79,7 @@ website:
             - notebooks/zero_inflated_regression.ipynb
         - section: More advanced models
           contents:
+            - structured_covariance.qmd
             - notebooks/distributional_models.ipynb
             - notebooks/hsgp_1d.ipynb
             - notebooks/hsgp_2d.ipynb

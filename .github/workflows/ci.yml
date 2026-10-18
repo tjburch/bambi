@@ -7,12 +7,18 @@ on:
     paths:
       - "bambi/**"
       - "tests/**"
+      - "pyproject.toml"
+      - ".ci/**"
+      - ".github/actions/**"
       - ".github/workflows/ci.yml"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "bambi/**"
       - "tests/**"
+      - "pyproject.toml"
+      - ".ci/**"
+      - ".github/actions/**"
       - ".github/workflows/ci.yml"
 
 jobs:
@@ -30,28 +36,72 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Record regression environment
+        run: |
+          mkdir -p .cache/regression
+          git rev-parse HEAD > .cache/regression/bambi-commit.txt
+          cp .ci/formulae.json .cache/regression/paired-formulae.json
+          uname -a > .cache/regression/host.txt
+          free -b > .cache/regression/memory.txt
+
       - uses: prefix-dev/setup-pixi@v0.9.2
         with:
           pixi-version: v0.62.2
           environments: ${{ matrix.pixi-env }}
 
+      - uses: astral-sh/setup-uv@v6
+      - uses: ./.github/actions/paired-formulae
+      - name: Locate regression interpreter
+        id: runtime
+        run: echo "python=$(pixi run -e ${{ matrix.pixi-env }} python -c 'import sys; print(sys.executable)')" >> "$GITHUB_OUTPUT"
+      - name: Install exact paired development dependency
+        env:
+          PAIRED_PYTHON: ${{ steps.runtime.outputs.python }}
+        run: |
+          set -o pipefail
+          uv pip install --python "$PAIRED_PYTHON" --no-deps -e .cache/formulae 2>&1 | tee .cache/regression/paired-install.log
+          git -C .cache/formulae rev-parse HEAD > .cache/regression/formulae-commit.txt
+          uv pip freeze --python "$PAIRED_PYTHON" > .cache/regression/versions.txt
+          "$PAIRED_PYTHON" - <<'PY'
+          import inspect
+          from pathlib import Path
+          import formulae
+          assert 'formula_wrappers' in inspect.signature(formulae.design_matrices).parameters
+          assert Path(formulae.__file__).resolve().is_relative_to(Path('.cache/formulae').resolve())
+          PY
+
       - name: Run pre-commit checks
-        run: pixi run -e ${{ matrix.pixi-env }} pre-commit run --all
+        run: |
+          set -o pipefail
+          "${{ steps.runtime.outputs.python }}" -m pre_commit run --all 2>&1 | tee .cache/regression/pre-commit.log
 
       - name: Run pylint
-        run: pixi run -e ${{ matrix.pixi-env }} pylint bambi
+        run: |
+          set -o pipefail
+          "${{ steps.runtime.outputs.python }}" -m pylint bambi 2>&1 | tee .cache/regression/pylint.log
 
       - name: Run tests with Coverage
         env:
           PYTENSOR_FLAGS: linker=${{ matrix.pytensor-linker }}
-        run: pixi run -e ${{ matrix.pixi-env }} pytest -vv --cov=bambi --cov-report=term --cov-report=xml tests
+        run: |
+          set -o pipefail
+          "${{ steps.runtime.outputs.python }}" -m pytest -vv --junitxml=.cache/regression/junit.xml --cov=bambi --cov-report=term --cov-report=xml tests 2>&1 | tee .cache/regression/pytest.log
 
       - name: Check Coverage Report
-        run: pixi run -e ${{ matrix.pixi-env }} coverage report -m
+        run: '"${{ steps.runtime.outputs.python }}" -m coverage report -m'
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v5
         with:
           env_vars: OS,PYTHON
           name: codecov-umbrella
           fail_ci_if_error: false
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: regression-${{ matrix.pixi-env }}-${{ matrix.pytensor-linker }}-attempt-${{ github.run_attempt }}
+          include-hidden-files: true
+          path: |
+            .cache/regression/
+            coverage.xml

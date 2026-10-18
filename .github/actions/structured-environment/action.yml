@@ -1,0 +1,32 @@
+name: Structured covariance environment
+description: Install the feature and its exact paired development dependency
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v6
+      with:
+        python-version: '3.12'
+    - shell: bash
+      run: |
+        mkdir -p .cache/structured-acceptance
+        git rev-parse HEAD > .cache/structured-acceptance/bambi-commit.txt
+        cp .ci/formulae.json .cache/structured-acceptance/paired-formulae.json
+        uv run --no-project python -c 'import platform; print(platform.platform())' > .cache/structured-acceptance/host.txt
+        lscpu > .cache/structured-acceptance/cpu.txt
+        free -b > .cache/structured-acceptance/memory.txt
+    - uses: ./.github/actions/paired-formulae
+    - shell: bash
+      run: |
+        set -o pipefail
+        uv venv
+        uv pip install -e '.[jax,nutpie]' pytest pytest-mock h5netcdf h5py scipy 2>&1 | tee .cache/structured-acceptance/install.log
+        uv pip install --no-deps -e .cache/formulae 2>&1 | tee .cache/structured-acceptance/paired-install.log
+        uv run --no-sync python - <<'PY'
+        import inspect
+        from pathlib import Path
+        import formulae
+        assert 'formula_wrappers' in inspect.signature(formulae.design_matrices).parameters
+        assert Path(formulae.__file__).resolve().is_relative_to(Path('.cache/formulae').resolve())
+        PY
+        uv pip freeze > .cache/structured-acceptance/environment.txt
+        git -C .cache/formulae rev-parse HEAD > .cache/structured-acceptance/formulae-commit.txt

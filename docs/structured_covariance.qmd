@@ -4,32 +4,34 @@ title: Structured Gaussian effects
 
 Structured effects add a zero-mean Gaussian process or coefficient vector to a model component's linear predictor. Covariance parameters are shared across the groups in one term. Separate terms have separate parameters. The same features work in auxiliary parameter formulas.
 
+This is covariance among latent Gaussian effects, not a residual-covariance component. For example, an AR(1) latent state enters the predictor while Gaussian observation noise remains conditionally independent. Certain Gaussian models can have the same observed covariance under a residual formulation, but their interfaces and conditional interpretations differ. A separate `residual ~ ar(...)` interface is outside this feature. Non-Gaussian families retain latent effects.
+
+Grouping uses `by=`; a second positional grouping argument and inner group-specific terms are unsupported. Ordinary terms such as `(1 + x | group)` remain valid outside structured wrappers.
+
 This development feature requires the paired Formulae wrapper interface. Release coordination and statistical acceptance checks remain pending; see the development validation record.
 
 ## Formulas
 
-The bar and `by=` forms have the same design, priors, public names, and prediction behavior:
+Use function-call wrappers with the `by=` grouping keyword:
 
 ```python
 import bambi as bmb
 
 model = bmb.Model('y ~ x + ar1(season, by=player)', data)
-model = bmb.Model('y ~ x + ar1(0 + season | player)', data)
 ```
 
-AR(1) and OU take coordinates. A bar form must remove the intercept and contain exactly one coordinate expression. AR(1) takes finite integer times or a declared ordered categorical grid. Integer gaps are preserved: 2024 to 2026 is two steps. An unordered label has no defined time order. OU takes real numbers or datetimes. Datetime differences are elapsed days by default; `time_unit` accepts seconds, minutes, hours, days, or weeks. Timezone-aware datetimes use elapsed UTC time. Numeric coordinates retain their units, including when `time_unit` labels them. Coordinates are never standardized.
+AR(1) and OU take coordinates. AR(1) takes finite integer times or a declared ordered categorical grid. Integer gaps are preserved: 2024 to 2026 is two steps. An unordered label has no defined time order. OU takes real numbers or datetimes. Datetime differences are elapsed days by default; `time_unit` accepts seconds, minutes, hours, days, or weeks. Timezone-aware datetimes use elapsed UTC time. Numeric coordinates retain their units, including when `time_unit` labels them. Coordinates are never standardized.
 
 ```python
 bmb.Model('y ~ ou(timestamp, by=player, time_unit="hours")', data)
-bmb.Model('y ~ ou(0 + timestamp | player, time_unit="hours")', data)
 ```
 
-`us`, `diag`, and `cs` use an ordinary coefficient design. Numeric predictors produce slopes. Categorical predictors use Formulae contrasts. Remove the intercept to get one indicator per level. Their bar forms and `by=` forms include the usual implicit intercept:
+`us`, `diag`, and `cs` use an ordinary coefficient design. Numeric predictors produce slopes. Categorical predictors use Formulae contrasts. Remove the intercept to get one indicator per level. The coefficient design includes the usual implicit intercept:
 
 ```python
-bmb.Model('y ~ us(x | player)', data)
-bmb.Model('y ~ us(1 + x, by=player)', data)
-bmb.Model('y ~ diag(0 + C(visit) | patient)', data)
+bmb.Model('y ~ us(x, by=player)', data)
+bmb.Model('y ~ us(0 + C(visit), by=patient)', data)
+bmb.Model('y ~ diag(0 + C(visit), by=patient)', data)
 bmb.Model('y ~ cs(1 + x, by=player, homogeneous=True)', data)
 ```
 
@@ -39,11 +41,9 @@ Omit `by` for one ungrouped process or coefficient vector. Both `by=player` and 
 
 ```python
 bmb.Model("y ~ ar1(season, by=['player', 'pitcher_hand'])", data)
-bmb.Model('y ~ ar1(0 + season | player:pitcher_hand)', data)
-bmb.Model('y ~ ar1(0 + season | team/player)', data)
 ```
 
-The nested example expands to a team process and a team-player process with separate covariance parameters. Deeper nesting follows Formulae's usual expansion. A player process continues across team changes. A team-player process is independent across distinct pairs, but reuses the pair when the player returns to the team. Use a stint identifier for a fresh process on each stint.
+For nested groups, use `ar1(season, by=team/player)`. This expands to a team process and a team-player process with separate covariance parameters. Deeper nesting follows Formulae's usual expansion. A player process continues across team changes. A team-player process is independent across distinct pairs, but reuses the pair when the player returns to the team. Use a stint identifier for a fresh process on each stint.
 
 ## Covariances and priors
 
@@ -59,7 +59,7 @@ The nested example expands to a team process and a team-player process with sepa
 
 CS is heterogeneous by default. `homogeneous=True` gives one shared SD in the raw coefficient basis. With K coefficients, its correlation lies strictly between `-1/(K-1)` and 1. Both variants support negative correlation. One-dimensional CS and US have identity correlation and need no correlation random variable. Response coefficient axes use independent vectors and covariance parameters, following the family's reference-category rules.
 
-Priors use dictionaries under canonical term names. Equivalent bar spellings also work:
+Priors use dictionaries under canonical term names. Equivalent quoted grouping names and unambiguous aliases also work:
 
 ```python
 priors = {
@@ -91,7 +91,7 @@ idata = model.fit(structured_method='marginal', marginalize='ar1(season, by=play
 
 `inference_method` selects PyMC, nutpie, NumPyro, or BlackJAX independently of `structured_method`. Automatic mode selects at most one eligible effect, choosing the largest scalar latent coefficient count. Temporal counts use observed unique group-state pairs. Coefficient counts use fitted dimension times observed groups. Ties use component-qualified canonical names. This heuristic reduces sampled dimension; it does not guarantee the fastest run.
 
-Exact marginal inference requires a univariate Gaussian identity-link mean. Remaining effects, including crossed effects, HSGPs, and auxiliary scale processes, stay sampled. Conditional observation SDs may vary. Effects in scale predictors and non-Gaussian models use latent inference. Modified likelihoods, or potentials involving the selected latent vector, require latent inference. Automatic mode reports supported fallback without a warning. Explicit unsupported selections raise an error. Select component-qualified names when aliases or spellings are ambiguous; lists of selections are unsupported.
+Exact marginal inference requires a univariate Gaussian identity-link mean. Remaining effects, including fixed effects, crossed effects, HSGPs, and auxiliary scale processes, stay sampled. This integrates at most one eligible structured term; broader joint Gaussian marginalization is outside this feature. Conditional observation SDs may vary. Effects in scale predictors and non-Gaussian models use latent inference. Modified likelihoods, or potentials involving the selected latent vector, require latent inference. Automatic mode reports supported fallback without a warning. Explicit unsupported selections raise an error. Select component-qualified names when aliases or spellings are ambiguous; lists of selections are unsupported.
 
 Builds and repeated fits resolve the chosen plan again when necessary. Fit logs and the posterior's `structured_inference` JSON attribute report requested/effective method, selected effect, remaining effects, and fallback reason. Marginal fits recover one joint conditional state or coefficient draw per posterior draw. These recovered public effects support the same prediction operations as latent fits. Prior prediction uses the complete latent generative model, including after a marginalized fit.
 

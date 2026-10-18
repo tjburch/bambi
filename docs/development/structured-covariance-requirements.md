@@ -1,14 +1,16 @@
 # Structured covariance terms implementation requirements
 
-Implement five native Bambi covariance wrappers with two equivalent formula syntaxes, broad additive composition, exact partial Gaussian marginalization, and prediction. Deliver a coordinated Formulae PR and Bambi PR.
+Implement five native Bambi covariance wrappers with a function-call formula interface, broad additive composition, exact partial Gaussian marginalization, and prediction. Deliver a coordinated Formulae PR and Bambi PR.
 
 ## Scope and delivery
 
 The required wrappers are `ar1`, `ou`, `cs`, `diag`, and `us`. They add zero-mean Gaussian latent effects to a distributional component's linear predictor, before its inverse link.
 
+These terms specify covariance among latent Gaussian effects, not residual covariance. In Gaussian models, observation noise remains conditionally independent given the effects and other parameters. Some Gaussian models can produce equivalent observed covariance under a residual formulation, but the interfaces and conditional interpretations differ. A separate `residual ~ ar(...)` component is outside this PR. Preserve latent effects for non-Gaussian families and auxiliary formulas.
+
 Required capabilities:
 
-- Both bar syntax and `by=` syntax, with equivalent designs, priors, canonical term identities, and posterior names.
+- Function-call wrappers with grouping through the `by=` keyword, canonical term identities, and stable posterior names.
 - Ungrouped processes, simple groups, composite groups, and standard nested expansion.
 - Multiple additive structured terms alongside fixed effects, offsets, ordinary group-specific effects, and HSGPs.
 - Structured terms in the parent and auxiliary parameter formulas.
@@ -31,15 +33,13 @@ A probe of Formulae 0.6.2 and 0.7.0 found:
 | --- | --- |
 | `ar1(season, by=player)` | Recognized as an ordinary function call; no structured semantics yet |
 | `ar1(season, by=["player", "pitcher_hand"])` | Parse error at `[` |
-| `ar1(0 + season \| player)` | Function-call resolution rejects the inner pipe expression |
-| `ar1(0 + season \| team/player)` | Same pipe-resolution limitation |
 | `(0 + season \| team/player)` | Ordinary nested group expansion succeeds |
 
 The tandem Formulae change must provide a supported way to:
 
 - Represent a formula expression inside a registered structured wrapper, including its intercept, interactions, transformations, grouping, and options.
 - Preserve the inner formula semantics instead of evaluating `1 + x` as ordinary elementwise arithmetic for coefficient wrappers.
-- Resolve both wrapper forms into metadata Bambi can consume.
+- Resolve registered function calls into metadata Bambi can consume.
 - Support grouping lists containing column names, including the agreed quoted list syntax.
 - Expose all referenced data columns, including quoted grouping names, to missing-data handling and new-data evaluation.
 - Preserve ordinary calls, arithmetic, namespace lookup, and existing group-specific formula semantics.
@@ -55,23 +55,19 @@ The formula fragments below belong inside Bambi formula strings.
 
 ### Temporal coordinate wrappers
 
-These pairs describe the same process:
+Use coordinate expressions with keyword grouping:
 
 ~~~python
 ar1(season, by=player)
-ar1(0 + season | player)
 
 ou(time, by=player)
-ou(0 + time | player)
 
 ou(timestamp, by=player, time_unit="hours")
-ou(0 + timestamp | player, time_unit="hours")
 
 ar1(season, by=["team", "player"])
-ar1(0 + season | team:player)
 ~~~
 
-For `ar1` and `ou`, the input is a coordinate, including when it is numeric. It is not a numeric random slope. The bar form requires an explicit zero intercept and exactly one coordinate expression. The `by=` form has coordinate semantics without adding an intercept.
+For `ar1` and `ou`, the input is a coordinate, including when it is numeric. It is not a numeric random slope. The function call takes exactly one coordinate expression without adding an intercept.
 
 Require scalar grouping via `by=player` and `by="player"`. Require composite grouping via `by=["team", "player"]` and `by=[team, player]`. In this registered context, quoted strings identify data columns. Preserve quoted column names and report missing columns clearly.
 
@@ -82,19 +78,14 @@ Omitting `by` creates one ungrouped process. A precomputed composite grouping co
 `us`, `diag`, and `cs` use ordinary Formulae coefficient-design semantics. Numeric predictors create slopes. Categorical terms use ordinary contrasts unless an explicit zero intercept requests a full set of indicators.
 
 ~~~python
-us(1 + x | player)
 us(1 + x, by=player)
 
-us(x | player)
-us(x, by=player)  # Both include the ordinary implicit intercept.
+us(x, by=player)  # Includes the ordinary implicit intercept.
 
-us(0 + C(visit) | patient)
 us(0 + C(visit), by=patient)
 
-diag(1 + x | player)
 diag(1 + x, by=player)
 
-cs(0 + C(visit) | patient)
 cs(0 + C(visit), by=patient)
 ~~~
 
@@ -105,7 +96,6 @@ Support ordinary valid predictor designs, including multiple numeric slopes, cat
 Default CS is heterogeneous, with one SD per design coefficient. Also require:
 
 ~~~python
-cs(1 + x | player, homogeneous=True)
 cs(1 + x, by=player, homogeneous=True)
 ~~~
 
@@ -116,7 +106,7 @@ Omitting `by` in a coefficient wrapper creates one Gaussian coefficient vector w
 ### Nested expansion and identity
 
 ~~~python
-ar1(0 + season | team/player)
+ar1(season, by=team/player)
 ~~~
 
 must expand into:
@@ -129,7 +119,7 @@ Apply standard recursive Formulae nesting semantics for deeper expressions. Each
 
 A player trajectory grouped by `player` continues across team changes. A trajectory grouped by `team:player` is independent across distinct team-player keys, conditional on covariance parameters. Returning to a previous team uses that existing key; users need a stint identifier to model a fresh process for each stint.
 
-Reject a term that supplies grouping through both an inner bar and `by=`. Follow Formulae's duplicate-term semantics so equivalent syntax cannot accidentally add the same contribution twice. Distinct specifications that happen to produce identical partitions in a dataset remain distinct effects; flag exact confounding where it can be established.
+Structured wrappers do not accept inner group-specific terms. Grouping uses `by=`; a second positional grouping argument is unsupported. Ordinary group-specific syntax such as `(1 + x | group)` remains supported outside the wrappers. Follow Formulae's duplicate-term semantics so equivalent syntax cannot accidentally add the same contribution twice. Distinct specifications that happen to produce identical partitions in a dataset remain distinct effects; flag exact confounding where it can be established.
 
 Normalize syntax before prior lookup and backend construction. Equivalent terms must expose the same canonical identity. User-supplied spelling and unambiguous aliases must resolve to that identity. Ambiguous selectors must raise an error listing the component-qualified choices.
 
@@ -225,7 +215,7 @@ Resolve the plan before compilation. Calling `build()` before `fit()` must not l
 
 ## Latent inference
 
-Use one shared term representation and covariance implementation behind both public syntaxes. The representation must retain the structure, component, design or coordinates, grouping, observation indexing, prior configuration, and canonical identity.
+Use one shared term representation and covariance implementation for the function-call interface. The representation must retain the structure, component, design or coordinates, grouping, observation indexing, prior configuration, and canonical identity.
 
 Default to a noncentered Gaussian representation. Respect Bambi's existing global and per-component parameterization controls, including supported prior overrides. A centered alternative may use the same transition or covariance factorization.
 
@@ -367,7 +357,7 @@ Expose interpretable group, coordinate or coefficient, component, and covariance
 
 Require:
 
-- Equivalent syntax produces the same final variable names and coordinates.
+- Equivalent supported grouping spellings produce the same final variable names and coordinates.
 - Aliases affect parameters, final effects, summaries, and selectors consistently.
 - Prior predictive, `predict(kind="response_params")`, `predict(kind="response")`, prior plotting, model representations, and serialization work.
 - Prediction with a fixed seed is reproducible; row reordering or batching within one prediction call does not create independent copies of the same state.
@@ -387,7 +377,7 @@ Fast deterministic tests belong in normal CI. Sampling recovery, calibration, an
 
 ### Formulae and design checks
 
-Verify both syntaxes, quoted and bare grouping names/lists, composite identifiers, nested expansion, auxiliary formulas, implicit and explicit intercepts, and numeric-versus-categorical coefficient designs. Test existing formula behavior and ordinary arithmetic as regressions. Assert canonical identity, design equivalence, variable discovery, duplicate handling, namespace behavior, and useful errors.
+Verify the function-call interface, quoted and bare grouping names/lists, composite identifiers, nested expansion, auxiliary formulas, implicit and explicit intercepts, and numeric-versus-categorical coefficient designs. Test existing formula behavior and ordinary arithmetic as regressions. Assert canonical identity, design equivalence, variable discovery, duplicate handling, namespace behavior, and useful errors.
 
 ### Covariance and likelihood checks
 
@@ -424,7 +414,7 @@ Demonstrate the expected temporal scaling and a useful measured marginalization 
 The feature is complete only when:
 
 - The paired Formulae interface is implemented, documented, and covered by regression tests.
-- All five wrappers and both syntaxes satisfy the formulas and covariance definitions.
+- All five function-call wrappers satisfy the formulas and covariance definitions.
 - Auxiliary formulas, coefficient designs, nested expansion, and additive composition work.
 - Automatic, latent, and explicit marginal modes follow the selection/error contract.
 - All four samplers work for latent and eligible marginal inference.
@@ -436,7 +426,7 @@ The feature is complete only when:
 
 ## Documentation and implementation boundaries
 
-Document both formula syntaxes together. Include examples for player trajectories, player-by-pitcher-hand deviations, player team changes, nested expansion, irregular OU datetimes, categorical covariance, correlated slopes, auxiliary effects, marginal selection, and new-group/new-time prediction.
+Document the function-call interface with `by=` grouping. Include examples for player trajectories, player-by-pitcher-hand deviations, player team changes, nested expansion, irregular OU datetimes, categorical covariance, correlated slopes, auxiliary effects, marginal selection, and new-group/new-time prediction.
 
 Explain stationary versus innovation SD, elapsed versus discrete time, categorical contrast bases, homogeneous CS, shared covariance parameters, negative CS bounds, weak identification, and conditional versus population-integrated predictions. Document exact automatic selection and fallback reasons.
 
@@ -453,7 +443,7 @@ Use current Bambi extension points where practical:
 
 The internal class/module layout is an implementation choice. Keep covariance math, term construction, and inference responsibilities clear without a general backend redesign. Avoid unrelated family changes, dependency upgrades, workflow rewrites, or notebook reformatting.
 
-Excluded capabilities: AR(2), Toeplitz, reduced rank, general spatial kernels, arbitrary joint marginalization of overlapping effects, group-specific covariance parameters, Laplace marginalization for non-Gaussian responses, and automatic addition of undefined coefficient levels. These exclusions do not remove existing Bambi features.
+Excluded capabilities: a residual-covariance component, a general engine integrating Gaussian fixed and random effects jointly, a sparse solver framework, dependencies on experimental marginalization prototypes, AR(2), Toeplitz, reduced rank, general spatial kernels, arbitrary joint marginalization of overlapping effects, group-specific covariance parameters, Laplace marginalization for non-Gaussian responses, and automatic addition of undefined coefficient levels. These exclusions do not remove existing Bambi features.
 
 The four-NUTS-sampler requirement does not require a separate feature project for VI or Bambi's pedagogical Laplace fitter. Preserve existing behavior where the resulting graph supports it, and validate unsupported requests explicitly.
 
@@ -470,13 +460,13 @@ Existing PyMC Extras infrastructure is a candidate building block, not proof tha
 
 ## Open decisions
 
-No product-scope questions remain from the interview. The Formulae extension interface, backend organization, and numerical implementation remain engineering decisions within this specification.
+Maintainer alignment on latent-effect versus residual-covariance scope remains pending. The implementation stays within the latent-effect scope above; it does not imply settled maintainer approval. Coordination with broader joint Gaussian marginalization work is also pending and does not authorize expanding this PR. The Formulae extension interface, backend organization, and numerical implementation remain engineering decisions within this specification.
 
 The first prototypes must establish parser integration, exact likelihood and gradients, recovery, all four sampler translations, and Bambi lifecycle compatibility. If a prototype fails, report the concrete blocker and a proposed adjustment. Do not silently reduce syntax, sampler, prediction, or inference requirements.
 
 ## Implementation steps
 
-1. Implement and test the focused Formulae extension for both syntaxes, grouping lists, coefficient designs, and nesting.
+1. Implement and test the focused Formulae extension for registered function calls, grouping lists, coefficient designs, and nesting.
 2. Build a grouped Gaussian AR(1) prototype with replicates, another sampled effect, exact gradients, joint recovery, and all four samplers.
 3. Integrate normalized structured terms, priors, coordinate validation, component lifecycle, and latent inference for all five wrappers.
 4. Implement exact one-term Gaussian marginalization, automatic selection, explicit selectors, and method-switching behavior.

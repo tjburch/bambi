@@ -2,6 +2,7 @@
 
 * Add structured Gaussian effect designs and exact one-term Gaussian marginal inference
   for AR(1), OU, diagonal, compound-symmetric, and unstructured covariance terms.
+  Structured wrappers use function calls with `by=` grouping; ordinary group terms remain supported.
   Requires the paired Formulae wrapper interface; release coordination and statistical
   acceptance validation remain pending.
 

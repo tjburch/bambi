@@ -45,12 +45,42 @@ def test_build_prior_and_selection(data, wrapper, inner):
 
 def test_equivalent_prior_and_alias(data):
     model = bmb.Model(
-        "y ~ ar1(0+time|g)", data, priors={"ar1(time, by=g)": {"sd": 0.7, "rho": -0.4}}
+        'y ~ ar1(time, by="g")', data, priors={"ar1(time, by=g)": {"sd": 0.7, "rho": -0.4}}
     )
     term = next(iter(model.parameters["mu"].structured_terms.values()))
     assert term.prior["rho"] == -0.4
-    model.set_alias({"ar1(0+time|g)": "trajectory"})
+    model.set_alias({'ar1(time, by="g")': "trajectory"})
     assert resolve_plan(model, "marginal", "trajectory")["selected"] == term.qualified_name
+
+
+@pytest.mark.parametrize("wrapper", ["ar1", "ou", "diag", "cs", "us"])
+def test_function_call_nesting_preserves_ordinary_group_terms(data, wrapper):
+    inner = "time" if wrapper in ("ar1", "ou") else "1+x"
+    model = bmb.Model(f"y ~ (1+x|h) + {wrapper}({inner}, by=g/h)", data)
+    component = model.parameters["mu"]
+    assert [term.term.groups for term in component.structured_terms.values()] == [
+        ("g",),
+        ("g", "h"),
+    ]
+    assert set(component.group_specific_terms) == {"1|h", "x|h"}
+
+
+@pytest.mark.parametrize("wrapper", ["ar1", "ou", "diag", "cs", "us"])
+def test_structured_inner_group_terms_are_rejected(data, wrapper):
+    with pytest.raises(ValueError, match="Use 'by='"):
+        bmb.Model(f"y ~ {wrapper}(0+time|g)", data)
+
+
+def test_quoted_coefficient_name_keeps_distinct_design_and_prior(data):
+    data["x + time"] = data.x**2
+    quoted = "us(`x + time`, by=g)"
+    model = bmb.Model(f"y ~ {quoted} + us(x + time, by=g)", data)
+    terms = list(model.parameters["mu"].structured_terms.values())
+    assert [term.dimension for term in terms] == [2, 3]
+    model.set_priors({quoted: {"sd": 0.7}})
+    assert terms[0].prior["sd"] == 0.7
+    model.set_alias({quoted: "quoted_slopes"})
+    assert resolve_plan(model, "marginal", "quoted_slopes")["selected"] == terms[0].qualified_name
 
 
 def test_additive_and_auxiliary_selection(data):
@@ -164,8 +194,8 @@ def test_zero_effect_prediction_and_independent_terms(data):
 
 
 def test_prior_update_spelling_and_fixed_sigma(data):
-    model = bmb.Model("y ~ ar1(0+time|g)", data, priors={"sigma": 0.5})
-    model.set_priors({"ar1(0 + time | g)": {"sd": 0.7, "rho": -0.4}})
+    model = bmb.Model('y ~ ar1(time, by="g")', data, priors={"sigma": 0.5})
+    model.set_priors({"ar1(time, by = g)": {"sd": 0.7, "rho": -0.4}})
     assert resolve_plan(model, "marginal", None)["selected"]
     model.structured_plan = resolve_plan(model, "marginal", None)
     model.build()
@@ -375,11 +405,11 @@ def test_ar1_numeric_categories_and_declared_grid(data):
 
 def test_source_spelling_whitespace(data):
     model = bmb.Model(
-        "y ~ ar1(0+time | g)",
+        "y ~ ar1(time, by=g)",
         data,
         priors={" ar1 (time,by = g) ": {"sd": 0.7, "rho": -0.4}},
     )
-    plan = resolve_plan(model, "marginal", " ar1 ( 0 + time | g ) ")
+    plan = resolve_plan(model, "marginal", ' ar1 ( time, by = "g" ) ')
     assert plan["selected"] == "mu.ar1(time, by=g)"
 
 
@@ -499,7 +529,7 @@ def test_prior_alias_collision_and_component_merge(data, reverse):
     model.set_priors(dict(updates[::-1] if reverse else updates))
     assert model.parameters["sigma"].structured_terms[term].prior["sd"] == 0.2
     assert model.parameters["sigma"].terms["x"].prior.args["sigma"] == 0.1
-    model.set_priors({"sigma.ar1(0+time | g)": {"sd": 0.3}})
+    model.set_priors({'sigma.ar1(time, by="g")': {"sd": 0.3}})
     assert model.parameters["sigma"].structured_terms[term].prior["sd"] == 0.3
 
 

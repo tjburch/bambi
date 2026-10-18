@@ -1,6 +1,6 @@
 {
-  "status": "Bounded checks, full regression matrices, and 100-replication AR(1)/OU/diagonal calibration pass; all initial benchmark families fail convergence. Controlled benchmark rerun, four calibration cases and latest CI pending.",
-  "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+  "status": "Function-call-only API and canonical-name repairs implemented; revised dependency CI pending. Prior five-family calibration passes limited gates; controlled benchmark and US/US3 calibration remain pending.",
+  "formulae_commit": "66826353b8faff477597fb477682ddcb37e3c314",
   "production_commit": "205730c26d59bebfbc132fde85559792887e32fc",
   "ci_fix_commit": "2eb4c5a16ddbad97ccf301e0077865fc0db7b349",
   "formulae_regressions": {
@@ -6526,10 +6526,11 @@
     }
   ],
   "pending": [
-    "Latest summary-reporting repair CI rerun",
-    "Remaining four calibration jobs and scientific assessment",
+    "Revised function-call-only Formulae/Bambi bounded and broad CI",
+    "US and3D US calibration jobs and scientific assessment",
     "All representative benchmarks and benefit/scaling assessment",
-    "Formulae release and released Bambi dependency minimum"
+    "Formulae release and released Bambi dependency minimum",
+    "Maintainer alignment on latent-effect versus residual scope and future joint-marginalization coordination"
   ],
   "composition_sampler_fix_commit": "bdbc244fd9134046a692e7357810cd05d237d1b3",
   "composition_rerun": {
@@ -6862,240 +6863,114 @@
     "status": "ACTIVE"
   },
   "latest_bounded_run": {
-    "run": 39078041112,
-    "head_commit": "bdbc244fd9134046a692e7357810cd05d237d1b3",
+    "run": 39085632629,
+    "head_commit": "0f414ce0ad5b9e5004328f7c1debaf64607263ad",
     "conclusion": "success",
-    "jobs": [
-      {
-        "conclusion": "success",
-        "id": 117529166248,
-        "name": "formulae",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166467,
-        "name": "reference",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166509,
-        "name": "posterior (ou, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166545,
-        "name": "documentation",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166562,
-        "name": "compatibility (blackjax, marginal)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166563,
-        "name": "compatibility (numpyro, latent)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166583,
-        "name": "compatibility (nutpie, marginal)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166592,
-        "name": "posterior (ar1, pymc)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166603,
-        "name": "compatibility (pymc, marginal)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166605,
-        "name": "compatibility (blackjax, latent)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166616,
-        "name": "posterior (ar1, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166620,
-        "name": "compatibility (numpyro, marginal)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166629,
-        "name": "compatibility (pymc, latent)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166632,
-        "name": "posterior (ar1, blackjax)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166643,
-        "name": "compatibility (nutpie, latent)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166646,
-        "name": "posterior (ar1, nutpie, --composition)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166648,
-        "name": "posterior (cs, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166656,
-        "name": "posterior (ar1, numpyro)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166664,
-        "name": "posterior (us3, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166680,
-        "name": "posterior (us, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166742,
-        "name": "posterior (cs_homogeneous, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "success",
-        "id": 117529166900,
-        "name": "posterior (diag, nutpie)",
-        "status": "completed"
-      },
-      {
-        "conclusion": "skipped",
-        "id": 117529167246,
-        "name": "calibration",
-        "status": "completed"
-      },
-      {
-        "conclusion": "skipped",
-        "id": 117529167412,
-        "name": "sensitivity",
-        "status": "completed"
-      },
-      {
-        "conclusion": "skipped",
-        "id": 117529167562,
-        "name": "benchmark",
-        "status": "completed"
-      }
-    ],
-    "composition_scientific_artifacts_inspected": true,
-    "other_scientific_artifacts": "Initial-run posterior comparisons, sensitivity, compatibility, and repaired documentation/reference artifacts previously inspected; production covariance code unchanged since 205730c."
+    "posterior_pairs": 11,
+    "all_scientific_comparison_artifacts_inspected": true,
+    "raw_draws_inspected": 176000,
+    "summary_coordinate_rows_checked": 1200,
+    "compatibility_cases": 72,
+    "compatibility_divergences": 30,
+    "compatibility_execution_only": true,
+    "documentation_and_reference_jobs": "success"
   },
   "latest_bambi_regression_run": {
-    "run": 39081913653,
-    "status": "passed; all4 JUnit artifacts and Formulae pins inspected,543 passed/one skipped each",
+    "run": 39085632613,
+    "status": "success",
+    "jobs": 4,
+    "passed_per_job": 556,
+    "skipped_per_job": 1,
     "artifacts": {
-      "regression-py313-cvm-attempt-1": {
+      ".cache/structured-ci/bambi-39085632613/regression-py313-cvm-attempt-1/.cache/regression/junit.xml": {
         "suites": [
           {
             "name": "pytest",
             "errors": "0",
             "failures": "0",
             "skipped": "1",
-            "tests": "544",
-            "time": "842.321",
-            "timestamp": "2026-10-18T00:14:32.276066+00:00",
+            "tests": "557",
+            "time": "512.977",
+            "timestamp": "2026-10-18T01:14:18.738672+00:00",
             "hostname": "runnervm8k3b6"
           }
         ],
-        "paired-formulae.json": {
-          "repository": "tjburch/formulae",
-          "commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab"
-        }
+        "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+        "ci_merge_commit": "9cc22dd16728f4aa43dba99c7d058c93ef50cff4",
+        "bambi_diff_against_feature_head_empty": true,
+        "merge_parents": [
+          "ef4097dc61589c74c6e6c3c48a989a9be6c1553b",
+          "0f414ce0ad5b9e5004328f7c1debaf64607263ad"
+        ]
       },
-      "regression-py313-numba-attempt-1": {
+      ".cache/structured-ci/bambi-39085632613/regression-py313-numba-attempt-1/.cache/regression/junit.xml": {
         "suites": [
           {
             "name": "pytest",
             "errors": "0",
             "failures": "0",
             "skipped": "1",
-            "tests": "544",
-            "time": "1448.304",
-            "timestamp": "2026-10-18T00:15:08.958962+00:00",
+            "tests": "557",
+            "time": "1384.897",
+            "timestamp": "2026-10-18T01:14:49.084247+00:00",
             "hostname": "runnervm8k3b6"
           }
         ],
-        "paired-formulae.json": {
-          "repository": "tjburch/formulae",
-          "commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab"
-        }
+        "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+        "ci_merge_commit": "9cc22dd16728f4aa43dba99c7d058c93ef50cff4",
+        "bambi_diff_against_feature_head_empty": true,
+        "merge_parents": [
+          "ef4097dc61589c74c6e6c3c48a989a9be6c1553b",
+          "0f414ce0ad5b9e5004328f7c1debaf64607263ad"
+        ]
       },
-      "regression-py312-cvm-attempt-1": {
+      ".cache/structured-ci/bambi-39085632613/regression-py312-cvm-attempt-1/.cache/regression/junit.xml": {
         "suites": [
           {
             "name": "pytest",
             "errors": "0",
             "failures": "0",
             "skipped": "1",
-            "tests": "544",
-            "time": "867.997",
-            "timestamp": "2026-10-18T00:15:03.412549+00:00",
+            "tests": "557",
+            "time": "856.089",
+            "timestamp": "2026-10-18T01:14:48.266735+00:00",
             "hostname": "runnervm8k3b6"
           }
         ],
-        "paired-formulae.json": {
-          "repository": "tjburch/formulae",
-          "commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab"
-        }
+        "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+        "ci_merge_commit": "9cc22dd16728f4aa43dba99c7d058c93ef50cff4",
+        "bambi_diff_against_feature_head_empty": true,
+        "merge_parents": [
+          "ef4097dc61589c74c6e6c3c48a989a9be6c1553b",
+          "0f414ce0ad5b9e5004328f7c1debaf64607263ad"
+        ]
       },
-      "regression-py312-numba-attempt-1": {
+      ".cache/structured-ci/bambi-39085632613/regression-py312-numba-attempt-1/.cache/regression/junit.xml": {
         "suites": [
           {
             "name": "pytest",
             "errors": "0",
             "failures": "0",
             "skipped": "1",
-            "tests": "544",
-            "time": "1427.494",
-            "timestamp": "2026-10-18T00:15:24.748131+00:00",
+            "tests": "557",
+            "time": "1114.087",
+            "timestamp": "2026-10-18T01:14:34.997129+00:00",
             "hostname": "runnervm8k3b6"
           }
         ],
-        "paired-formulae.json": {
-          "repository": "tjburch/formulae",
-          "commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab"
-        }
+        "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+        "ci_merge_commit": "9cc22dd16728f4aa43dba99c7d058c93ef50cff4",
+        "bambi_diff_against_feature_head_empty": true,
+        "merge_parents": [
+          "ef4097dc61589c74c6e6c3c48a989a9be6c1553b",
+          "0f414ce0ad5b9e5004328f7c1debaf64607263ad"
+        ]
       }
+    },
+    "inspection_resources": {
+      "wall_seconds": 0.95,
+      "peak_rss_bytes": 36945920,
+      "swaps": 0
     }
   },
   "calibration": {
@@ -15070,6 +14945,2465 @@
       },
       "limits": "Approximate thinned MCMC ranks;100 replications and30-way correction limit precision/power. Scalar prior-averaged Gaussian marginal-nutpie calibration does not separately establish joint/new-group, latent/composition or other-sampler calibration. State coverage is dependent within each simulation; exploratory uncertainty uses100 independent replicate clusters.",
       "independent_review": "Fresh read-only Sol High reviewer independently inspected requirements, actual prior/generator/coefficient likelihood/recovery/prediction/calibration code and all100 JSON/CSV records. No coefficient mathematics defect found. CSV coordinate-label reporting defect independently confirmed and repaired; raw calibration decisions unaffected. Reviewer separately checked final formatter and regression without execution or edits."
+    },
+    "cs": {
+      "structure": "cs",
+      "replications": 100,
+      "quantities": 31,
+      "required_quantities_complete": true,
+      "all_fits_converged": true,
+      "independent_gate_recomputation_passed": true,
+      "all_100_raw_sample_statistics_finite": true,
+      "raw_divergences": 0,
+      "raw_maxdepth_hits": 0,
+      "retained_draws": 600000,
+      "rank_p_threshold": 0.0003225806451612903,
+      "minimum_rank_p": 0.14992703215059203,
+      "coverage_range": [
+        0.88,
+        0.96
+      ],
+      "rhat_max": 1.0039952517920137,
+      "ess_bulk_min": 1753.6400657391835,
+      "ess_tail_min": 1287.9033041475284,
+      "bfmi_min": 0.7716673088488587,
+      "seed_range": [
+        3411,
+        3510
+      ],
+      "rho_range": [
+        -0.8376546702730637,
+        0.9226155504096758
+      ],
+      "negative_rho_replications": 50,
+      "selected_quantities": {
+        "Intercept": {
+          "replicates": 100,
+          "coverage_94": 0.96,
+          "coverage_familywise_99_interval": [
+            0.8391965609481669,
+            0.9973350025903949
+          ],
+          "rank_uniformity_p": 0.20730350265384595,
+          "passed": true
+        },
+        "x": {
+          "replicates": 100,
+          "coverage_94": 0.92,
+          "coverage_familywise_99_interval": [
+            0.7793792858825768,
+            0.9846850845868661
+          ],
+          "rank_uniformity_p": 0.8599024434893511,
+          "passed": true
+        },
+        "sigma": {
+          "replicates": 100,
+          "coverage_94": 0.95,
+          "coverage_familywise_99_interval": [
+            0.823400255544296,
+            0.9949817036969734
+          ],
+          "rank_uniformity_p": 0.8709494699837734,
+          "passed": true
+        },
+        "effect_sd[0]": {
+          "replicates": 100,
+          "coverage_94": 0.96,
+          "coverage_familywise_99_interval": [
+            0.8391965609481669,
+            0.9973350025903949
+          ],
+          "rank_uniformity_p": 0.6840843938098696,
+          "passed": true
+        },
+        "effect_sd[1]": {
+          "replicates": 100,
+          "coverage_94": 0.95,
+          "coverage_familywise_99_interval": [
+            0.823400255544296,
+            0.9949817036969734
+          ],
+          "rank_uniformity_p": 0.8143863188518181,
+          "passed": true
+        },
+        "effect_rho": {
+          "replicates": 100,
+          "coverage_94": 0.96,
+          "coverage_familywise_99_interval": [
+            0.8391965609481669,
+            0.9973350025903949
+          ],
+          "rank_uniformity_p": 0.7953589789487421,
+          "passed": true
+        },
+        "heldout_response": {
+          "replicates": 100,
+          "coverage_94": 0.96,
+          "coverage_familywise_99_interval": [
+            0.8391965609481669,
+            0.9973350025903949
+          ],
+          "rank_uniformity_p": 0.5801984454831548,
+          "passed": true
+        }
+      },
+      "raw_replicates_to_inspect": [
+        1,
+        50,
+        51,
+        78,
+        100
+      ],
+      "per_fit_diagnostics": [
+        {
+          "replicate": 1,
+          "seed": 3411,
+          "rhat": 1.0015829266080458,
+          "bulk": 3522.668506906652,
+          "tail": 2676.414710188797,
+          "bfmi": 0.8736834820638121,
+          "rho": -0.2555554042547558
+        },
+        {
+          "replicate": 2,
+          "seed": 3412,
+          "rhat": 1.0018067117565295,
+          "bulk": 3816.9920142119913,
+          "tail": 3579.3506228288306,
+          "bfmi": 0.9657532124694607,
+          "rho": -0.8376546702730637
+        },
+        {
+          "replicate": 3,
+          "seed": 3413,
+          "rhat": 1.0012214144016456,
+          "bulk": 2675.382470600165,
+          "tail": 1976.4049602380117,
+          "bfmi": 0.796632451464842,
+          "rho": -0.28973062235961083
+        },
+        {
+          "replicate": 4,
+          "seed": 3414,
+          "rhat": 1.0018553077039567,
+          "bulk": 2417.4299528436404,
+          "tail": 1851.11359600855,
+          "bfmi": 0.8115121210411824,
+          "rho": -0.3426016755477126
+        },
+        {
+          "replicate": 5,
+          "seed": 3415,
+          "rhat": 1.0018792794507778,
+          "bulk": 4059.3701870094324,
+          "tail": 3412.118053756666,
+          "bfmi": 0.8857882685954354,
+          "rho": 0.3952465719551507
+        },
+        {
+          "replicate": 6,
+          "seed": 3416,
+          "rhat": 1.000968009677759,
+          "bulk": 4520.828871782756,
+          "tail": 3670.314440407716,
+          "bfmi": 0.9451173915173656,
+          "rho": -0.006984562682034503
+        },
+        {
+          "replicate": 7,
+          "seed": 3417,
+          "rhat": 1.002228593949808,
+          "bulk": 3857.2075492923427,
+          "tail": 3414.597651550396,
+          "bfmi": 0.9826380735431425,
+          "rho": -0.37031053891065246
+        },
+        {
+          "replicate": 8,
+          "seed": 3418,
+          "rhat": 1.0014711370068357,
+          "bulk": 4407.973359846171,
+          "tail": 3451.534123235373,
+          "bfmi": 0.9445186191300153,
+          "rho": -0.37273266293350266
+        },
+        {
+          "replicate": 9,
+          "seed": 3419,
+          "rhat": 1.0011431048235881,
+          "bulk": 2224.125271144621,
+          "tail": 1684.927927213736,
+          "bfmi": 0.8413991752183336,
+          "rho": 0.43042922729479033
+        },
+        {
+          "replicate": 10,
+          "seed": 3420,
+          "rhat": 1.0018174612783697,
+          "bulk": 3253.752304846801,
+          "tail": 2218.4403832656726,
+          "bfmi": 0.8892625273237914,
+          "rho": -0.26584753654975884
+        },
+        {
+          "replicate": 11,
+          "seed": 3421,
+          "rhat": 1.002126621416447,
+          "bulk": 3637.0102574321245,
+          "tail": 3240.9382885489176,
+          "bfmi": 0.9275293951188638,
+          "rho": 0.25653319287970244
+        },
+        {
+          "replicate": 12,
+          "seed": 3422,
+          "rhat": 1.0014821269777212,
+          "bulk": 3198.549669748208,
+          "tail": 1962.1808352659027,
+          "bfmi": 0.9308629857216241,
+          "rho": -0.2605233573337976
+        },
+        {
+          "replicate": 13,
+          "seed": 3423,
+          "rhat": 1.0009409763264556,
+          "bulk": 4512.541009980823,
+          "tail": 4004.8817423078417,
+          "bfmi": 0.9415725293894629,
+          "rho": -0.5560443050580943
+        },
+        {
+          "replicate": 14,
+          "seed": 3424,
+          "rhat": 1.0022285374023083,
+          "bulk": 3748.525239754971,
+          "tail": 3157.765756245012,
+          "bfmi": 0.9726105701009279,
+          "rho": 0.4388306871866913
+        },
+        {
+          "replicate": 15,
+          "seed": 3425,
+          "rhat": 1.0024162491052677,
+          "bulk": 2558.1901132763387,
+          "tail": 2854.799976987074,
+          "bfmi": 0.8909130559498073,
+          "rho": 0.7291981204602397
+        },
+        {
+          "replicate": 16,
+          "seed": 3426,
+          "rhat": 1.00224151400617,
+          "bulk": 2400.8147715322825,
+          "tail": 1492.4792429028116,
+          "bfmi": 0.8607877013228292,
+          "rho": -0.016023618340673916
+        },
+        {
+          "replicate": 17,
+          "seed": 3427,
+          "rhat": 1.001064822742755,
+          "bulk": 3505.520351907338,
+          "tail": 2653.057178731075,
+          "bfmi": 0.8959604238451486,
+          "rho": 0.12655595444521286
+        },
+        {
+          "replicate": 18,
+          "seed": 3428,
+          "rhat": 1.002548638543987,
+          "bulk": 2388.61462160729,
+          "tail": 1824.2008333797198,
+          "bfmi": 0.8623720475844947,
+          "rho": -0.7099597365216292
+        },
+        {
+          "replicate": 19,
+          "seed": 3429,
+          "rhat": 1.0014317425631711,
+          "bulk": 3814.936543321092,
+          "tail": 3022.1838151374373,
+          "bfmi": 0.9078835719366849,
+          "rho": -0.09086202606592976
+        },
+        {
+          "replicate": 20,
+          "seed": 3430,
+          "rhat": 1.0013391853013938,
+          "bulk": 4525.929147320186,
+          "tail": 3652.332656091331,
+          "bfmi": 0.9535962747034173,
+          "rho": 0.5326274461484137
+        },
+        {
+          "replicate": 21,
+          "seed": 3431,
+          "rhat": 1.0012381253398273,
+          "bulk": 3997.710375540615,
+          "tail": 3472.0423949983306,
+          "bfmi": 0.9024500279214451,
+          "rho": -0.2126295003261364
+        },
+        {
+          "replicate": 22,
+          "seed": 3432,
+          "rhat": 1.0015685883066936,
+          "bulk": 3771.8626814591503,
+          "tail": 3500.2395504956457,
+          "bfmi": 0.9549444749734918,
+          "rho": -0.08479743828685482
+        },
+        {
+          "replicate": 23,
+          "seed": 3433,
+          "rhat": 1.0025446244252583,
+          "bulk": 2317.2765779782953,
+          "tail": 1538.1411353508486,
+          "bfmi": 0.8050160041226718,
+          "rho": -0.5697947052277981
+        },
+        {
+          "replicate": 24,
+          "seed": 3434,
+          "rhat": 1.0014517896427806,
+          "bulk": 3054.2828151801154,
+          "tail": 2929.2622852188138,
+          "bfmi": 0.9658792361471061,
+          "rho": -0.424629081528651
+        },
+        {
+          "replicate": 25,
+          "seed": 3435,
+          "rhat": 1.0031402037867938,
+          "bulk": 2368.0430844238244,
+          "tail": 1470.0153603672888,
+          "bfmi": 0.8402402835947954,
+          "rho": 0.39493335466654356
+        },
+        {
+          "replicate": 26,
+          "seed": 3436,
+          "rhat": 1.0020398286597754,
+          "bulk": 3611.430713468155,
+          "tail": 3546.251371606876,
+          "bfmi": 0.9349430047951519,
+          "rho": -0.6037942172847695
+        },
+        {
+          "replicate": 27,
+          "seed": 3437,
+          "rhat": 1.0010710846845503,
+          "bulk": 3219.139647564894,
+          "tail": 3067.6349145380527,
+          "bfmi": 0.9304848360092288,
+          "rho": 0.24666571583139882
+        },
+        {
+          "replicate": 28,
+          "seed": 3438,
+          "rhat": 1.0012976981526596,
+          "bulk": 2307.2574241679235,
+          "tail": 1574.920402424609,
+          "bfmi": 0.8677374671452439,
+          "rho": 0.2467525779168996
+        },
+        {
+          "replicate": 29,
+          "seed": 3439,
+          "rhat": 1.0018643669815004,
+          "bulk": 3276.024845961508,
+          "tail": 3233.455950994319,
+          "bfmi": 0.8504520400108142,
+          "rho": -0.2903661857959111
+        },
+        {
+          "replicate": 30,
+          "seed": 3440,
+          "rhat": 1.0017206979330588,
+          "bulk": 4007.5168256092325,
+          "tail": 3407.2998903021225,
+          "bfmi": 0.9430432606955678,
+          "rho": -0.0917623559956627
+        },
+        {
+          "replicate": 31,
+          "seed": 3441,
+          "rhat": 1.0023313798830906,
+          "bulk": 2782.9702841745225,
+          "tail": 1784.8874420145453,
+          "bfmi": 0.8425710428854021,
+          "rho": 0.14319158426549777
+        },
+        {
+          "replicate": 32,
+          "seed": 3442,
+          "rhat": 1.001943449858169,
+          "bulk": 2687.728958967753,
+          "tail": 2039.8532680673693,
+          "bfmi": 0.8543969889133034,
+          "rho": -0.705161960835159
+        },
+        {
+          "replicate": 33,
+          "seed": 3443,
+          "rhat": 1.0019669456273694,
+          "bulk": 2649.4530418981476,
+          "tail": 1871.6974944292656,
+          "bfmi": 0.86954074287133,
+          "rho": 0.3841547201426949
+        },
+        {
+          "replicate": 34,
+          "seed": 3444,
+          "rhat": 1.001838041676186,
+          "bulk": 4033.230045381226,
+          "tail": 3497.046374955836,
+          "bfmi": 0.9848716623433312,
+          "rho": -0.01944198590101027
+        },
+        {
+          "replicate": 35,
+          "seed": 3445,
+          "rhat": 1.0014581973905092,
+          "bulk": 2199.645075152442,
+          "tail": 1490.7394664091146,
+          "bfmi": 0.7956822810816301,
+          "rho": -0.6327058805084644
+        },
+        {
+          "replicate": 36,
+          "seed": 3446,
+          "rhat": 1.0015095559729346,
+          "bulk": 2789.6257569747263,
+          "tail": 1962.5297009968974,
+          "bfmi": 0.8556041867598678,
+          "rho": -0.5102601928939093
+        },
+        {
+          "replicate": 37,
+          "seed": 3447,
+          "rhat": 1.0015993980493854,
+          "bulk": 3923.579287366838,
+          "tail": 3323.7418827028537,
+          "bfmi": 0.9374696833171287,
+          "rho": -0.18228146328250586
+        },
+        {
+          "replicate": 38,
+          "seed": 3448,
+          "rhat": 1.0024788006826246,
+          "bulk": 2183.5864984986442,
+          "tail": 1437.763002065473,
+          "bfmi": 0.7716673088488587,
+          "rho": -0.19096260306231794
+        },
+        {
+          "replicate": 39,
+          "seed": 3449,
+          "rhat": 1.0017954057317924,
+          "bulk": 1959.5507366813613,
+          "tail": 1640.5103016894136,
+          "bfmi": 0.8284185755415718,
+          "rho": 0.7849000213904611
+        },
+        {
+          "replicate": 40,
+          "seed": 3450,
+          "rhat": 1.0025407251745262,
+          "bulk": 2771.96983484303,
+          "tail": 2870.757945074295,
+          "bfmi": 0.9192153747867039,
+          "rho": 0.8535174959412151
+        },
+        {
+          "replicate": 41,
+          "seed": 3451,
+          "rhat": 1.0024645829860095,
+          "bulk": 3730.095723809311,
+          "tail": 3309.179812166656,
+          "bfmi": 1.0095682736931422,
+          "rho": -0.49539360888949946
+        },
+        {
+          "replicate": 42,
+          "seed": 3452,
+          "rhat": 1.0015841876279135,
+          "bulk": 3848.3393961213333,
+          "tail": 3468.717674892146,
+          "bfmi": 0.9146240370603211,
+          "rho": -0.4717228384307914
+        },
+        {
+          "replicate": 43,
+          "seed": 3453,
+          "rhat": 1.002695669063129,
+          "bulk": 2191.4439104623375,
+          "tail": 1451.579837988121,
+          "bfmi": 0.8888320119691202,
+          "rho": 0.3263720919708414
+        },
+        {
+          "replicate": 44,
+          "seed": 3454,
+          "rhat": 1.0013673102932443,
+          "bulk": 2405.700512154,
+          "tail": 1685.5461607012971,
+          "bfmi": 0.7884503745842648,
+          "rho": -0.2674853208443345
+        },
+        {
+          "replicate": 45,
+          "seed": 3455,
+          "rhat": 1.000956478007514,
+          "bulk": 2425.256077068802,
+          "tail": 1400.0146424041593,
+          "bfmi": 0.8292459025941789,
+          "rho": 0.3638002755661201
+        },
+        {
+          "replicate": 46,
+          "seed": 3456,
+          "rhat": 1.0010701549902645,
+          "bulk": 2213.578823726354,
+          "tail": 1500.8087937769037,
+          "bfmi": 0.8016287082281425,
+          "rho": 0.1402678708875891
+        },
+        {
+          "replicate": 47,
+          "seed": 3457,
+          "rhat": 1.0019209485182294,
+          "bulk": 3186.015545028719,
+          "tail": 3038.0056513018267,
+          "bfmi": 0.8617791971039519,
+          "rho": -0.6268332127453637
+        },
+        {
+          "replicate": 48,
+          "seed": 3458,
+          "rhat": 1.0018782231602277,
+          "bulk": 2480.7816316323647,
+          "tail": 1970.6504702943216,
+          "bfmi": 0.827316981531736,
+          "rho": -0.646870627667737
+        },
+        {
+          "replicate": 49,
+          "seed": 3459,
+          "rhat": 1.0017983204942442,
+          "bulk": 3918.6641240864597,
+          "tail": 3204.774886993211,
+          "bfmi": 0.9689630920421008,
+          "rho": 0.06463683075360427
+        },
+        {
+          "replicate": 50,
+          "seed": 3460,
+          "rhat": 1.0017756251074061,
+          "bulk": 3780.0803327565363,
+          "tail": 3122.74677251363,
+          "bfmi": 0.8778034515518292,
+          "rho": 0.1118229676579176
+        },
+        {
+          "replicate": 51,
+          "seed": 3461,
+          "rhat": 1.0015399775723834,
+          "bulk": 1948.4227158837905,
+          "tail": 1287.9033041475284,
+          "bfmi": 0.8637691802104918,
+          "rho": 0.2310520227281259
+        },
+        {
+          "replicate": 52,
+          "seed": 3462,
+          "rhat": 1.002059821470602,
+          "bulk": 4282.179222940992,
+          "tail": 3819.8876588006387,
+          "bfmi": 0.9443345056967618,
+          "rho": 0.32652895378053737
+        },
+        {
+          "replicate": 53,
+          "seed": 3463,
+          "rhat": 1.0023417193660558,
+          "bulk": 3923.7201123592376,
+          "tail": 3492.8888651062825,
+          "bfmi": 0.9534800986982295,
+          "rho": 0.05225551149521844
+        },
+        {
+          "replicate": 54,
+          "seed": 3464,
+          "rhat": 1.0016649929185797,
+          "bulk": 3779.6600264310973,
+          "tail": 2846.571364682308,
+          "bfmi": 0.894096616071691,
+          "rho": 0.38335931576672555
+        },
+        {
+          "replicate": 55,
+          "seed": 3465,
+          "rhat": 1.0015954727295986,
+          "bulk": 2705.6097328378237,
+          "tail": 1613.9590755927616,
+          "bfmi": 0.8198349843580038,
+          "rho": -0.3508874075419385
+        },
+        {
+          "replicate": 56,
+          "seed": 3466,
+          "rhat": 1.0012224039313977,
+          "bulk": 3479.49882998328,
+          "tail": 3101.491992811744,
+          "bfmi": 0.9197151586083943,
+          "rho": -0.24702049327050288
+        },
+        {
+          "replicate": 57,
+          "seed": 3467,
+          "rhat": 1.0018186771895945,
+          "bulk": 3172.796566638616,
+          "tail": 2197.641026825692,
+          "bfmi": 0.8381559473819079,
+          "rho": 0.2852830466449564
+        },
+        {
+          "replicate": 58,
+          "seed": 3468,
+          "rhat": 1.0024461181247748,
+          "bulk": 4473.534359006923,
+          "tail": 3733.0902930448706,
+          "bfmi": 0.95968481464974,
+          "rho": 0.17527646919094794
+        },
+        {
+          "replicate": 59,
+          "seed": 3469,
+          "rhat": 1.001109862248822,
+          "bulk": 3574.8438485553834,
+          "tail": 3414.150669630183,
+          "bfmi": 0.9347270084222776,
+          "rho": -0.590411943338297
+        },
+        {
+          "replicate": 60,
+          "seed": 3470,
+          "rhat": 1.0017413019242691,
+          "bulk": 3591.610471621034,
+          "tail": 3298.6749668511006,
+          "bfmi": 0.89841188851149,
+          "rho": 0.05064911026935389
+        },
+        {
+          "replicate": 61,
+          "seed": 3471,
+          "rhat": 1.0021063598859534,
+          "bulk": 3137.7204601840413,
+          "tail": 2084.8614544558686,
+          "bfmi": 0.8984399216750281,
+          "rho": 0.09819994490911534
+        },
+        {
+          "replicate": 62,
+          "seed": 3472,
+          "rhat": 1.0013873750211963,
+          "bulk": 2609.4605390002016,
+          "tail": 1707.001023289979,
+          "bfmi": 0.832602814843536,
+          "rho": -0.5607592990470709
+        },
+        {
+          "replicate": 63,
+          "seed": 3473,
+          "rhat": 1.0024098566931166,
+          "bulk": 2540.631290642481,
+          "tail": 1903.1029945878954,
+          "bfmi": 0.9245931156985435,
+          "rho": -0.35296087254538766
+        },
+        {
+          "replicate": 64,
+          "seed": 3474,
+          "rhat": 1.001487194776505,
+          "bulk": 3202.895323115127,
+          "tail": 3015.61930839471,
+          "bfmi": 0.9191252626102532,
+          "rho": -0.28288339387981776
+        },
+        {
+          "replicate": 65,
+          "seed": 3475,
+          "rhat": 1.0022826130032374,
+          "bulk": 2160.36678107707,
+          "tail": 1329.2982106784648,
+          "bfmi": 0.8309559917658539,
+          "rho": 0.43536959259663144
+        },
+        {
+          "replicate": 66,
+          "seed": 3476,
+          "rhat": 1.0021229623094257,
+          "bulk": 2550.123212836361,
+          "tail": 1493.907201796437,
+          "bfmi": 0.8646665872131387,
+          "rho": -0.8267099094261663
+        },
+        {
+          "replicate": 67,
+          "seed": 3477,
+          "rhat": 1.0019942796054173,
+          "bulk": 2112.3952727275473,
+          "tail": 1606.665775784584,
+          "bfmi": 0.8793975705141274,
+          "rho": -0.12816540649021727
+        },
+        {
+          "replicate": 68,
+          "seed": 3478,
+          "rhat": 1.001904612675269,
+          "bulk": 2085.3170631236244,
+          "tail": 1426.7849519080971,
+          "bfmi": 0.8136853052505245,
+          "rho": 0.00886065800676026
+        },
+        {
+          "replicate": 69,
+          "seed": 3479,
+          "rhat": 1.000950273195141,
+          "bulk": 3828.96870764546,
+          "tail": 3211.498888849192,
+          "bfmi": 0.9396049593655195,
+          "rho": -0.4889021346895453
+        },
+        {
+          "replicate": 70,
+          "seed": 3480,
+          "rhat": 1.0026696409527565,
+          "bulk": 1984.8792039833986,
+          "tail": 1556.3347236772863,
+          "bfmi": 0.9175495899567802,
+          "rho": 0.5934864063037312
+        },
+        {
+          "replicate": 71,
+          "seed": 3481,
+          "rhat": 1.0014963578836795,
+          "bulk": 3675.2684557107877,
+          "tail": 2970.8296668191174,
+          "bfmi": 0.949710451421061,
+          "rho": 0.3402200738927004
+        },
+        {
+          "replicate": 72,
+          "seed": 3482,
+          "rhat": 1.0018443644767716,
+          "bulk": 3646.6865750659686,
+          "tail": 3168.0176344853717,
+          "bfmi": 0.9228477175533196,
+          "rho": -0.12748768713307881
+        },
+        {
+          "replicate": 73,
+          "seed": 3483,
+          "rhat": 1.0013309850651286,
+          "bulk": 4277.1834139688635,
+          "tail": 3481.8682924538093,
+          "bfmi": 0.9585850094740094,
+          "rho": -0.16698738569969854
+        },
+        {
+          "replicate": 74,
+          "seed": 3484,
+          "rhat": 1.0016671379063657,
+          "bulk": 3734.9742219668883,
+          "tail": 2945.871344553238,
+          "bfmi": 0.9300489306119518,
+          "rho": 0.32237617845695954
+        },
+        {
+          "replicate": 75,
+          "seed": 3485,
+          "rhat": 1.0022305075788382,
+          "bulk": 2455.9958474695977,
+          "tail": 1927.0375225532862,
+          "bfmi": 0.8975461246760891,
+          "rho": -0.7600357104960348
+        },
+        {
+          "replicate": 76,
+          "seed": 3486,
+          "rhat": 1.0012458450622073,
+          "bulk": 3612.3968240404142,
+          "tail": 3506.1421954594352,
+          "bfmi": 0.9351898615695476,
+          "rho": -0.20384584738079375
+        },
+        {
+          "replicate": 77,
+          "seed": 3487,
+          "rhat": 1.002678637736666,
+          "bulk": 3038.768296363251,
+          "tail": 2127.405525634433,
+          "bfmi": 0.9019955127108306,
+          "rho": 0.765316788531833
+        },
+        {
+          "replicate": 78,
+          "seed": 3488,
+          "rhat": 1.0039952517920137,
+          "bulk": 1753.6400657391835,
+          "tail": 2048.5194114936844,
+          "bfmi": 0.9258613020040164,
+          "rho": 0.9226155504096758
+        },
+        {
+          "replicate": 79,
+          "seed": 3489,
+          "rhat": 1.0013986833443866,
+          "bulk": 3682.002331054375,
+          "tail": 3336.496901564734,
+          "bfmi": 0.9400980298409961,
+          "rho": 0.413188844719423
+        },
+        {
+          "replicate": 80,
+          "seed": 3490,
+          "rhat": 1.0021481542502286,
+          "bulk": 3736.0865633076464,
+          "tail": 3485.2744707438846,
+          "bfmi": 0.9541105220210838,
+          "rho": 0.19946760015637388
+        },
+        {
+          "replicate": 81,
+          "seed": 3491,
+          "rhat": 1.0014901843970547,
+          "bulk": 4373.90023934567,
+          "tail": 3505.693019977108,
+          "bfmi": 0.9822100979613623,
+          "rho": 0.21821721140630382
+        },
+        {
+          "replicate": 82,
+          "seed": 3492,
+          "rhat": 1.0020960227216982,
+          "bulk": 2933.580300300906,
+          "tail": 1934.4501579242246,
+          "bfmi": 0.8498660383052424,
+          "rho": 0.7153081721749153
+        },
+        {
+          "replicate": 83,
+          "seed": 3493,
+          "rhat": 1.0013640348282873,
+          "bulk": 3767.483503451523,
+          "tail": 3141.6728925359157,
+          "bfmi": 0.9449745727718141,
+          "rho": 0.13508040086085588
+        },
+        {
+          "replicate": 84,
+          "seed": 3494,
+          "rhat": 1.0024867725653064,
+          "bulk": 3572.06757311814,
+          "tail": 3469.2828623333485,
+          "bfmi": 0.9961288860143653,
+          "rho": 0.6332444651430692
+        },
+        {
+          "replicate": 85,
+          "seed": 3495,
+          "rhat": 1.0024857898428254,
+          "bulk": 2471.870241292487,
+          "tail": 1723.089147526882,
+          "bfmi": 0.8553027670489223,
+          "rho": 0.2763290597900489
+        },
+        {
+          "replicate": 86,
+          "seed": 3496,
+          "rhat": 1.0015154214201987,
+          "bulk": 3471.3894165274914,
+          "tail": 3327.0349582990916,
+          "bfmi": 0.8726763980666227,
+          "rho": 0.3571309588854482
+        },
+        {
+          "replicate": 87,
+          "seed": 3497,
+          "rhat": 1.0015088947031499,
+          "bulk": 2965.8374116556006,
+          "tail": 1889.4908902837083,
+          "bfmi": 0.8315311316049477,
+          "rho": 0.1848665803577585
+        },
+        {
+          "replicate": 88,
+          "seed": 3498,
+          "rhat": 1.0018037230746293,
+          "bulk": 2067.381838377094,
+          "tail": 1569.4964990931057,
+          "bfmi": 0.8960694917257036,
+          "rho": 0.9037462846008796
+        },
+        {
+          "replicate": 89,
+          "seed": 3499,
+          "rhat": 1.0009040640298905,
+          "bulk": 3686.5920755708403,
+          "tail": 3132.369080192038,
+          "bfmi": 0.9845567705815045,
+          "rho": -0.5362305845443399
+        },
+        {
+          "replicate": 90,
+          "seed": 3500,
+          "rhat": 1.001996157126998,
+          "bulk": 2214.9202338335376,
+          "tail": 1614.987127894778,
+          "bfmi": 0.8846037777141691,
+          "rho": 0.4022780851052278
+        },
+        {
+          "replicate": 91,
+          "seed": 3501,
+          "rhat": 1.0025389723230054,
+          "bulk": 2355.2467417620855,
+          "tail": 1548.294261872326,
+          "bfmi": 0.8347516984559512,
+          "rho": -0.1708299146627993
+        },
+        {
+          "replicate": 92,
+          "seed": 3502,
+          "rhat": 1.001997400851193,
+          "bulk": 3380.890952171022,
+          "tail": 3243.10743578849,
+          "bfmi": 0.9877771801344138,
+          "rho": 0.26968285517133583
+        },
+        {
+          "replicate": 93,
+          "seed": 3503,
+          "rhat": 1.0028698387216295,
+          "bulk": 3881.6236131036817,
+          "tail": 3713.6131354530576,
+          "bfmi": 0.9208193046443159,
+          "rho": 0.30555226980542416
+        },
+        {
+          "replicate": 94,
+          "seed": 3504,
+          "rhat": 1.0011130393394432,
+          "bulk": 3178.8844866824043,
+          "tail": 3300.3232038110596,
+          "bfmi": 0.9650452697963754,
+          "rho": -0.10668640823312889
+        },
+        {
+          "replicate": 95,
+          "seed": 3505,
+          "rhat": 1.0019448454712148,
+          "bulk": 4418.739390113588,
+          "tail": 3913.5010566978585,
+          "bfmi": 0.9082066129577425,
+          "rho": 0.26876695911228776
+        },
+        {
+          "replicate": 96,
+          "seed": 3506,
+          "rhat": 1.0013867603604942,
+          "bulk": 4480.657168098754,
+          "tail": 3857.0860981191186,
+          "bfmi": 0.9494458247830725,
+          "rho": -0.13992800752616372
+        },
+        {
+          "replicate": 97,
+          "seed": 3507,
+          "rhat": 1.0029564725005544,
+          "bulk": 2420.075646936954,
+          "tail": 1706.144437455695,
+          "bfmi": 0.7787808350571721,
+          "rho": 0.4221521690185704
+        },
+        {
+          "replicate": 98,
+          "seed": 3508,
+          "rhat": 1.0016695330332397,
+          "bulk": 3452.9017451279988,
+          "tail": 2588.3303979958123,
+          "bfmi": 0.8748800436441756,
+          "rho": 0.22593204139650636
+        },
+        {
+          "replicate": 99,
+          "seed": 3509,
+          "rhat": 1.0021191308799065,
+          "bulk": 3989.7227333991823,
+          "tail": 3542.8890929569075,
+          "bfmi": 0.937170503660017,
+          "rho": -0.3108043704542636
+        },
+        {
+          "replicate": 100,
+          "seed": 3510,
+          "rhat": 1.0012750332582876,
+          "bulk": 2649.7163399339524,
+          "tail": 1636.071608815528,
+          "bfmi": 0.828780579608777,
+          "rho": -0.5422579438266178
+        }
+      ],
+      "artifact_download": {
+        "artifact_id": "12122017773",
+        "bytes": 3159494885,
+        "sha256": "75d4d0b7469380e86acbdc99cad8984166b827956720746eaa38880ff8410616",
+        "download_seconds": 152.04029304202413
+      },
+      "selected_raw_draw_checks": [
+        {
+          "replicate": 1,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd[0]": {
+              "rank_recomputed": 0.28284401151758903,
+              "hdi_94": [
+                0.4184576560086739,
+                0.9746252535014784
+              ],
+              "truth": 0.574793903033483
+            },
+            "effect_sd[1]": {
+              "rank_recomputed": 0.46689633616182735,
+              "hdi_94": [
+                0.07187278722310653,
+                0.20958581242875435
+              ],
+              "truth": 0.12657108039682247
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.49366826630445865,
+              "hdi_94": [
+                -0.6807742495549534,
+                0.22978040368444175
+              ],
+              "truth": -0.2555554042547558
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.046860686994393996,
+              "hdi_94": [
+                -2.349332962961686,
+                -1.8960526630745769
+              ],
+              "truth": -2.3320716438897313
+            }
+          }
+        },
+        {
+          "replicate": 50,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd[0]": {
+              "rank_recomputed": 0.5164963900634786,
+              "hdi_94": [
+                0.15959957265567062,
+                0.6042831088473558
+              ],
+              "truth": 0.37135526436535526
+            },
+            "effect_sd[1]": {
+              "rank_recomputed": 0.24124820319563572,
+              "hdi_94": [
+                0.3177909618309793,
+                0.9048516323531879
+              ],
+              "truth": 0.47019148175401304
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.7112711032376958,
+              "hdi_94": [
+                -0.6428289095654687,
+                0.42013074908024617
+              ],
+              "truth": 0.1118229676579176
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.4055704667903047,
+              "hdi_94": [
+                -1.9963681948359544,
+                0.366549682956409
+              ],
+              "truth": -0.911398674829376
+            }
+          }
+        },
+        {
+          "replicate": 51,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd[0]": {
+              "rank_recomputed": 0.6642280333265003,
+              "hdi_94": [
+                0.597110855599206,
+                1.3529055393176985
+              ],
+              "truth": 1.0401219971815168
+            },
+            "effect_sd[1]": {
+              "rank_recomputed": 0.8896207876779898,
+              "hdi_94": [
+                0.0005456135718870231,
+                0.2899601169193456
+              ],
+              "truth": 0.25202794021030195
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.6572857061219689,
+              "hdi_94": [
+                -0.4891227162950128,
+                0.7801053029931424
+              ],
+              "truth": 0.2310520227281259
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.027567050736393293,
+              "hdi_94": [
+                -5.5392469399216155,
+                -3.2924902142915378
+              ],
+              "truth": -5.4909303017688815
+            }
+          }
+        },
+        {
+          "replicate": 78,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd[0]": {
+              "rank_recomputed": 0.6052369619495422,
+              "hdi_94": [
+                0.4789517693879935,
+                1.0093150062812766
+              ],
+              "truth": 0.7323538577797049
+            },
+            "effect_sd[1]": {
+              "rank_recomputed": 0.35811736190482746,
+              "hdi_94": [
+                0.3080321081964317,
+                0.6651725448720548
+              ],
+              "truth": 0.42209721974614134
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.7104211488681136,
+              "hdi_94": [
+                0.6928036104385509,
+                0.9856842425764119
+              ],
+              "truth": 0.9226155504096758
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.5304532895406012,
+              "hdi_94": [
+                -1.2253737509599454,
+                -0.5644635509343064
+              ],
+              "truth": -0.861038592846105
+            }
+          }
+        },
+        {
+          "replicate": 100,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd[0]": {
+              "rank_recomputed": 0.5012283047735562,
+              "hdi_94": [
+                7.038560491167426e-06,
+                0.022644506705213122
+              ],
+              "truth": 0.006313620120323713
+            },
+            "effect_sd[1]": {
+              "rank_recomputed": 0.21778614909418792,
+              "hdi_94": [
+                0.47275523695083926,
+                1.0445700801506554
+              ],
+              "truth": 0.5912166534172271
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.116978969603506,
+              "hdi_94": [
+                -0.8092361398199525,
+                0.7700975179224363
+              ],
+              "truth": -0.5422579438266178
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.06809257967530985,
+              "hdi_94": [
+                -2.28121864236475,
+                -1.9776532784526013
+              ],
+              "truth": -2.271801238107338
+            }
+          }
+        }
+      ],
+      "strict_reassessment": {
+        "passed": true,
+        "all_100_saved_posteriors_reassessed": true,
+        "ranks_and_coverage_identical": true,
+        "maximum_interval_roundoff_difference": 1.1501910535116622e-13,
+        "maximum_rank_p_roundoff_difference": 7.771561172376096e-16,
+        "wall_seconds": 20.99,
+        "peak_rss_bytes": 363282432,
+        "swaps": 0,
+        "command": ".venv/bin/python bambi/examples/structured_covariance_validation.py calibration .cache/structured-ci/bambi-39076990474/calibration-cs --replicates 100 --output .cache/structured-ci/bambi-39076990474/calibration-cs/strict-assessment",
+        "versions": {
+          "numpy": "2.2.6",
+          "scipy": "1.15.3",
+          "arviz_stats": "1.3.3",
+          "xarray": "2026.9.0"
+        }
+      },
+      "metadata_and_all_raw_stat_inspection_resources": {
+        "wall_seconds": 7.07,
+        "peak_rss_bytes": 210829312,
+        "swaps": 0
+      },
+      "selected_raw_inspection_resources": {
+        "wall_seconds": 2.81,
+        "peak_rss_bytes": 223641600,
+        "swaps": 0,
+        "shared_across_both_families": true,
+        "selected_replications_total": 9
+      },
+      "corrected_csv_resources": {
+        "wall_seconds": 40.02,
+        "peak_rss_bytes": 271433728,
+        "swaps": 0,
+        "shared_across_both_families": true,
+        "files_total": 200,
+        "originals_preserved": true,
+        "replicate_1_group0_slope_mean_hdi_checked_per_family": true
+      },
+      "provenance": {
+        "run": 39076990474,
+        "production_commit": "205730c26d59bebfbc132fde85559792887e32fc",
+        "ci_merge_commit": "caa8db78a5c7e5a7b176c597e98629f49f724370",
+        "complete_bambi_diff_against_production_commit_empty": true,
+        "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+        "archived_source_target_accept": 0.97,
+        "native_nutpie_depth_flags_inspected": true,
+        "note": "Archived command JSON predates explicit target_accept/max-depth fields; target acceptance comes from exact archived source. Native depth flags and sampler versions remain saved."
+      },
+      "independent_review": "Fresh read-only Sol High reviewer independently inspected requirements, actual CS prior/generator/covariance/Woodbury/recovery/prediction/calibration source and all100 compact metadata/diagnostic/CSV records per family. Gate flags checked against numbers; no missing/failed fit or concrete CS implementation defect. Reviewer did not execute checks or load raw arrays; lead owns raw/strict reassessments.",
+      "limits": "Scalar prior-averaged marginal-nutpie calibration for2D intercept/slope design, with one existing-group heldout slope atx1.5.100 replications and simultaneous correction yield wide coverage intervals; thinned MCMC ranks approximate independent ranks. No separate joint coefficient, new-group, latent/composition, other-sampler or rho-region-conditional calibration claim.",
+      "resource_measurement_recheck": "A3.4-second overlap between two artifact checks was caught; both were rerun sequentially. Original overlapped logs retained; reported measurements use sequential reruns."
+    },
+    "cs_homogeneous": {
+      "structure": "cs_homogeneous",
+      "replications": 100,
+      "quantities": 30,
+      "required_quantities_complete": true,
+      "all_fits_converged": true,
+      "independent_gate_recomputation_passed": true,
+      "all_100_raw_sample_statistics_finite": true,
+      "raw_divergences": 0,
+      "raw_maxdepth_hits": 0,
+      "retained_draws": 600000,
+      "rank_p_threshold": 0.0003333333333333333,
+      "minimum_rank_p": 0.03423609288407569,
+      "coverage_range": [
+        0.89,
+        0.97
+      ],
+      "rhat_max": 1.0040722057852272,
+      "ess_bulk_min": 1147.1412438387038,
+      "ess_tail_min": 824.788914183659,
+      "bfmi_min": 0.6646517747972109,
+      "seed_range": [
+        3411,
+        3510
+      ],
+      "rho_range": [
+        -0.9704789516924865,
+        0.9013996482277223
+      ],
+      "negative_rho_replications": 51,
+      "selected_quantities": {
+        "Intercept": {
+          "replicates": 100,
+          "coverage_94": 0.94,
+          "coverage_familywise_99_interval": [
+            0.8086194561039975,
+            0.9919795223734078
+          ],
+          "rank_uniformity_p": 0.7100880196162012,
+          "passed": true
+        },
+        "x": {
+          "replicates": 100,
+          "coverage_94": 0.93,
+          "coverage_familywise_99_interval": [
+            0.7939820880465828,
+            0.9885091521251473
+          ],
+          "rank_uniformity_p": 0.4400586706723647,
+          "passed": true
+        },
+        "sigma": {
+          "replicates": 100,
+          "coverage_94": 0.95,
+          "coverage_familywise_99_interval": [
+            0.823769034820158,
+            0.9949458384264089
+          ],
+          "rank_uniformity_p": 0.4791478418530848,
+          "passed": true
+        },
+        "effect_sd": {
+          "replicates": 100,
+          "coverage_94": 0.92,
+          "coverage_familywise_99_interval": [
+            0.7797699658751347,
+            0.9846105034042543
+          ],
+          "rank_uniformity_p": 0.3093883726314815,
+          "passed": true
+        },
+        "effect_rho": {
+          "replicates": 100,
+          "coverage_94": 0.92,
+          "coverage_familywise_99_interval": [
+            0.7797699658751347,
+            0.9846105034042543
+          ],
+          "rank_uniformity_p": 0.1613108893057831,
+          "passed": true
+        },
+        "heldout_response": {
+          "replicates": 100,
+          "coverage_94": 0.94,
+          "coverage_familywise_99_interval": [
+            0.8086194561039975,
+            0.9919795223734078
+          ],
+          "rank_uniformity_p": 0.03423609288407569,
+          "passed": true
+        }
+      },
+      "raw_replicates_to_inspect": [
+        1,
+        50,
+        65,
+        100
+      ],
+      "per_fit_diagnostics": [
+        {
+          "replicate": 1,
+          "seed": 3411,
+          "rhat": 1.0017309898727584,
+          "bulk": 3460.3526122417643,
+          "tail": 3111.015674947773,
+          "bfmi": 0.9089959362048656,
+          "rho": -0.13488959784252347
+        },
+        {
+          "replicate": 2,
+          "seed": 3412,
+          "rhat": 1.0009873151850406,
+          "bulk": 3436.475236479242,
+          "tail": 3669.415235358245,
+          "bfmi": 0.9799318378754972,
+          "rho": 0.2374072130543967
+        },
+        {
+          "replicate": 3,
+          "seed": 3413,
+          "rhat": 1.0012761437545943,
+          "bulk": 1806.0677874011146,
+          "tail": 1358.0235771805676,
+          "bfmi": 0.8676968509675609,
+          "rho": -0.19891939444030401
+        },
+        {
+          "replicate": 4,
+          "seed": 3414,
+          "rhat": 1.0019528977412144,
+          "bulk": 1869.9528930464667,
+          "tail": 1348.1993316551761,
+          "bfmi": 0.7762551276850949,
+          "rho": -0.45564954394575485
+        },
+        {
+          "replicate": 5,
+          "seed": 3415,
+          "rhat": 1.0022529326364258,
+          "bulk": 3609.295130853237,
+          "tail": 3460.136981269353,
+          "bfmi": 0.9115344117726775,
+          "rho": 0.025233545937291796
+        },
+        {
+          "replicate": 6,
+          "seed": 3416,
+          "rhat": 1.0015861339637153,
+          "bulk": 3464.687281795779,
+          "tail": 3428.899119148835,
+          "bfmi": 0.9060572653029115,
+          "rho": 0.9013996482277223
+        },
+        {
+          "replicate": 7,
+          "seed": 3417,
+          "rhat": 1.001201729981082,
+          "bulk": 4278.986407578852,
+          "tail": 3565.2510341121574,
+          "bfmi": 0.9877869379396268,
+          "rho": 0.22951416305051847
+        },
+        {
+          "replicate": 8,
+          "seed": 3418,
+          "rhat": 1.001093954951276,
+          "bulk": 3894.0605487122752,
+          "tail": 3835.219752225163,
+          "bfmi": 0.9416108763243766,
+          "rho": -0.09830820430137964
+        },
+        {
+          "replicate": 9,
+          "seed": 3419,
+          "rhat": 1.0014242516980132,
+          "bulk": 4635.330259468652,
+          "tail": 3881.661193226675,
+          "bfmi": 0.9694736857156441,
+          "rho": 0.2103516768406773
+        },
+        {
+          "replicate": 10,
+          "seed": 3420,
+          "rhat": 1.0012051006835812,
+          "bulk": 2202.9645962079426,
+          "tail": 1555.5839779835828,
+          "bfmi": 0.8949106759826714,
+          "rho": -0.4045048040200181
+        },
+        {
+          "replicate": 11,
+          "seed": 3421,
+          "rhat": 1.0012316162885417,
+          "bulk": 4431.224833653777,
+          "tail": 3952.2950323124537,
+          "bfmi": 0.9114802310417387,
+          "rho": -0.191673755231052
+        },
+        {
+          "replicate": 12,
+          "seed": 3422,
+          "rhat": 1.0011164562812283,
+          "bulk": 3785.596778666831,
+          "tail": 3583.106910554414,
+          "bfmi": 0.9205785149433082,
+          "rho": -0.5330075633450106
+        },
+        {
+          "replicate": 13,
+          "seed": 3423,
+          "rhat": 1.0016502228449107,
+          "bulk": 4509.3185994285195,
+          "tail": 4084.8827788711787,
+          "bfmi": 0.9132631942346916,
+          "rho": -0.04067126161343326
+        },
+        {
+          "replicate": 14,
+          "seed": 3424,
+          "rhat": 1.0016895968710942,
+          "bulk": 3614.9591719552204,
+          "tail": 2992.1740741561334,
+          "bfmi": 0.8532016722102153,
+          "rho": 0.37478517713176795
+        },
+        {
+          "replicate": 15,
+          "seed": 3425,
+          "rhat": 1.0013608214397582,
+          "bulk": 4059.8002325928283,
+          "tail": 3450.8316426179395,
+          "bfmi": 0.8518750487390835,
+          "rho": -0.2716769318239075
+        },
+        {
+          "replicate": 16,
+          "seed": 3426,
+          "rhat": 1.001085691626063,
+          "bulk": 5146.301114163477,
+          "tail": 4021.9164066170715,
+          "bfmi": 0.9499077949516833,
+          "rho": 0.14834152650012938
+        },
+        {
+          "replicate": 17,
+          "seed": 3427,
+          "rhat": 1.001890891199306,
+          "bulk": 3256.4822767015216,
+          "tail": 3323.5645532314347,
+          "bfmi": 0.950970930464661,
+          "rho": 0.08729818833951326
+        },
+        {
+          "replicate": 18,
+          "seed": 3428,
+          "rhat": 1.0010022686537547,
+          "bulk": 4439.049216101171,
+          "tail": 3198.453571001894,
+          "bfmi": 0.8820356236402845,
+          "rho": 0.017370368833126856
+        },
+        {
+          "replicate": 19,
+          "seed": 3429,
+          "rhat": 1.00240133134295,
+          "bulk": 3211.405321222074,
+          "tail": 2419.1865191651323,
+          "bfmi": 0.833356956211366,
+          "rho": 0.23236400625697312
+        },
+        {
+          "replicate": 20,
+          "seed": 3430,
+          "rhat": 1.0014081604202916,
+          "bulk": 4227.131904358706,
+          "tail": 3887.219933345194,
+          "bfmi": 0.96901618678353,
+          "rho": 0.4624072424267528
+        },
+        {
+          "replicate": 21,
+          "seed": 3431,
+          "rhat": 1.0023264774065943,
+          "bulk": 4420.531946237098,
+          "tail": 3928.7271124389777,
+          "bfmi": 0.9201219048436086,
+          "rho": 0.1069916946025638
+        },
+        {
+          "replicate": 22,
+          "seed": 3432,
+          "rhat": 1.002482554099076,
+          "bulk": 2221.948640441851,
+          "tail": 2429.668613973217,
+          "bfmi": 0.920994507089029,
+          "rho": -0.48696328335803085
+        },
+        {
+          "replicate": 23,
+          "seed": 3433,
+          "rhat": 1.0020701373352683,
+          "bulk": 3000.037906557659,
+          "tail": 2063.591581831994,
+          "bfmi": 0.874207578724928,
+          "rho": -0.24972797039657085
+        },
+        {
+          "replicate": 24,
+          "seed": 3434,
+          "rhat": 1.0012185710844015,
+          "bulk": 3890.5221751599934,
+          "tail": 3545.2610800745274,
+          "bfmi": 0.9494627300388486,
+          "rho": 0.1183965562503637
+        },
+        {
+          "replicate": 25,
+          "seed": 3435,
+          "rhat": 1.0016235880217095,
+          "bulk": 1517.2629448825533,
+          "tail": 1000.3495067455872,
+          "bfmi": 0.8475916005018225,
+          "rho": 0.7736509242460914
+        },
+        {
+          "replicate": 26,
+          "seed": 3436,
+          "rhat": 1.0014933023677395,
+          "bulk": 3347.9285535436284,
+          "tail": 3330.2257634764046,
+          "bfmi": 0.8918390650143346,
+          "rho": -0.7315047861105329
+        },
+        {
+          "replicate": 27,
+          "seed": 3437,
+          "rhat": 1.0027871753004212,
+          "bulk": 5023.234288152231,
+          "tail": 4023.554112560559,
+          "bfmi": 0.9273676781787945,
+          "rho": -0.07618768256544674
+        },
+        {
+          "replicate": 28,
+          "seed": 3438,
+          "rhat": 1.0012114188906307,
+          "bulk": 2364.2575827283113,
+          "tail": 1637.5210321273596,
+          "bfmi": 0.8990059038525292,
+          "rho": -0.28213001538131427
+        },
+        {
+          "replicate": 29,
+          "seed": 3439,
+          "rhat": 1.0010606846993542,
+          "bulk": 4341.702994246454,
+          "tail": 3827.678641561691,
+          "bfmi": 0.9026614830899452,
+          "rho": -0.22528170867478645
+        },
+        {
+          "replicate": 30,
+          "seed": 3440,
+          "rhat": 1.0010310249187615,
+          "bulk": 3460.607523723113,
+          "tail": 3233.625281289658,
+          "bfmi": 0.9227462278853357,
+          "rho": 0.5097573504100483
+        },
+        {
+          "replicate": 31,
+          "seed": 3441,
+          "rhat": 1.0018222849077743,
+          "bulk": 2188.0790364770182,
+          "tail": 1737.7409053067654,
+          "bfmi": 0.8221684162690893,
+          "rho": -0.5404460292164237
+        },
+        {
+          "replicate": 32,
+          "seed": 3442,
+          "rhat": 1.001240818025886,
+          "bulk": 3887.6684044817803,
+          "tail": 3444.388527585311,
+          "bfmi": 0.9242455691110499,
+          "rho": 0.3206280235180463
+        },
+        {
+          "replicate": 33,
+          "seed": 3443,
+          "rhat": 1.003169820862136,
+          "bulk": 1749.639596995103,
+          "tail": 1128.8577160544658,
+          "bfmi": 0.764423022605391,
+          "rho": -0.41282010534394703
+        },
+        {
+          "replicate": 34,
+          "seed": 3444,
+          "rhat": 1.0021002497007183,
+          "bulk": 3721.269243501905,
+          "tail": 3550.7998538487573,
+          "bfmi": 0.9403926247673465,
+          "rho": 0.2358295620662393
+        },
+        {
+          "replicate": 35,
+          "seed": 3445,
+          "rhat": 1.0018446057896393,
+          "bulk": 1859.3132838155636,
+          "tail": 1166.2582309352315,
+          "bfmi": 0.8002466333762728,
+          "rho": 0.2515653197965217
+        },
+        {
+          "replicate": 36,
+          "seed": 3446,
+          "rhat": 1.0014480488697126,
+          "bulk": 4282.369915032805,
+          "tail": 3523.0056810064752,
+          "bfmi": 0.8954234711190349,
+          "rho": 0.38985648327119915
+        },
+        {
+          "replicate": 37,
+          "seed": 3447,
+          "rhat": 1.001400757767939,
+          "bulk": 3594.557478575425,
+          "tail": 3117.4478210945435,
+          "bfmi": 0.926217966128161,
+          "rho": -0.6544659571075147
+        },
+        {
+          "replicate": 38,
+          "seed": 3448,
+          "rhat": 1.0018841727738124,
+          "bulk": 4162.22026356802,
+          "tail": 3270.595077652618,
+          "bfmi": 0.9308363565368758,
+          "rho": -0.030864080866304353
+        },
+        {
+          "replicate": 39,
+          "seed": 3449,
+          "rhat": 1.0016696548634505,
+          "bulk": 3452.875535163175,
+          "tail": 2393.8074287399877,
+          "bfmi": 0.871536358427532,
+          "rho": -0.23317377113830562
+        },
+        {
+          "replicate": 40,
+          "seed": 3450,
+          "rhat": 1.0008445270703223,
+          "bulk": 3610.4448802169813,
+          "tail": 2468.9889930898607,
+          "bfmi": 0.8557249000982106,
+          "rho": -0.3566182511023878
+        },
+        {
+          "replicate": 41,
+          "seed": 3451,
+          "rhat": 1.002342622609163,
+          "bulk": 4659.262200389817,
+          "tail": 3875.1098755266953,
+          "bfmi": 0.9118675684222829,
+          "rho": -0.0879323469215116
+        },
+        {
+          "replicate": 42,
+          "seed": 3452,
+          "rhat": 1.0015182710503783,
+          "bulk": 2089.669206366904,
+          "tail": 2281.558783362357,
+          "bfmi": 0.8862995960333862,
+          "rho": -0.8482315958880003
+        },
+        {
+          "replicate": 43,
+          "seed": 3453,
+          "rhat": 1.0006916474855925,
+          "bulk": 4366.347759207083,
+          "tail": 3633.4312797847124,
+          "bfmi": 0.9527025549039182,
+          "rho": -0.501747409049451
+        },
+        {
+          "replicate": 44,
+          "seed": 3454,
+          "rhat": 1.0022044517053161,
+          "bulk": 3144.0153201613443,
+          "tail": 3099.565255915281,
+          "bfmi": 0.9745027612181386,
+          "rho": -0.9704789516924865
+        },
+        {
+          "replicate": 45,
+          "seed": 3455,
+          "rhat": 1.001874613087254,
+          "bulk": 3363.2900244175953,
+          "tail": 3201.1293278328426,
+          "bfmi": 0.8895005742995445,
+          "rho": -0.14903724876931596
+        },
+        {
+          "replicate": 46,
+          "seed": 3456,
+          "rhat": 1.0031791559731167,
+          "bulk": 3481.5513550434985,
+          "tail": 2413.661982853325,
+          "bfmi": 0.7931730277777868,
+          "rho": 0.18457886677928892
+        },
+        {
+          "replicate": 47,
+          "seed": 3457,
+          "rhat": 1.001561622408083,
+          "bulk": 4002.6603826792384,
+          "tail": 3387.6312432243253,
+          "bfmi": 0.9040000662658838,
+          "rho": 0.31866864141760165
+        },
+        {
+          "replicate": 48,
+          "seed": 3458,
+          "rhat": 1.001511407142881,
+          "bulk": 4384.352984206442,
+          "tail": 3749.690125097127,
+          "bfmi": 0.9890043109338998,
+          "rho": 0.2844484466611855
+        },
+        {
+          "replicate": 49,
+          "seed": 3459,
+          "rhat": 1.0025083975210762,
+          "bulk": 4113.163608962086,
+          "tail": 3673.8732676532964,
+          "bfmi": 0.9202534982531071,
+          "rho": 0.472703611808629
+        },
+        {
+          "replicate": 50,
+          "seed": 3460,
+          "rhat": 1.0012911756880183,
+          "bulk": 3862.6796587768554,
+          "tail": 2844.445002819266,
+          "bfmi": 0.9105322913992583,
+          "rho": 0.4146346295219359
+        },
+        {
+          "replicate": 51,
+          "seed": 3461,
+          "rhat": 1.0024622250111754,
+          "bulk": 3436.0094385008188,
+          "tail": 3576.358823332033,
+          "bfmi": 0.9560123267436892,
+          "rho": 0.19574068790486238
+        },
+        {
+          "replicate": 52,
+          "seed": 3462,
+          "rhat": 1.0019284720913768,
+          "bulk": 4323.354885648237,
+          "tail": 3787.3138551730353,
+          "bfmi": 0.9199578743355988,
+          "rho": -0.1825452413643439
+        },
+        {
+          "replicate": 53,
+          "seed": 3463,
+          "rhat": 1.0017239792400665,
+          "bulk": 2831.3453238767943,
+          "tail": 2749.406763843806,
+          "bfmi": 0.9384800876478381,
+          "rho": -0.47316133597138044
+        },
+        {
+          "replicate": 54,
+          "seed": 3464,
+          "rhat": 1.0013906487795825,
+          "bulk": 4367.127184951829,
+          "tail": 3980.143364346805,
+          "bfmi": 1.0142007310666699,
+          "rho": 0.031537200861732444
+        },
+        {
+          "replicate": 55,
+          "seed": 3465,
+          "rhat": 1.0021128485038422,
+          "bulk": 1782.5454545113162,
+          "tail": 1208.131443783029,
+          "bfmi": 0.8462163233744793,
+          "rho": -0.065415815171374
+        },
+        {
+          "replicate": 56,
+          "seed": 3466,
+          "rhat": 1.0015130562551342,
+          "bulk": 3237.6956565372047,
+          "tail": 2985.494026415923,
+          "bfmi": 0.9357323975266172,
+          "rho": -0.0983501999201359
+        },
+        {
+          "replicate": 57,
+          "seed": 3467,
+          "rhat": 1.0017057794606035,
+          "bulk": 1542.3375247985493,
+          "tail": 1012.9889260849903,
+          "bfmi": 0.8554630130759312,
+          "rho": 0.1184007712487156
+        },
+        {
+          "replicate": 58,
+          "seed": 3468,
+          "rhat": 1.0009442483423128,
+          "bulk": 3788.4288287224026,
+          "tail": 3577.3249546789834,
+          "bfmi": 0.916977954117113,
+          "rho": 0.5216462676845398
+        },
+        {
+          "replicate": 59,
+          "seed": 3469,
+          "rhat": 1.0012324487562052,
+          "bulk": 4195.480870691946,
+          "tail": 3842.778059323231,
+          "bfmi": 0.9305642022204235,
+          "rho": -0.007997661129554573
+        },
+        {
+          "replicate": 60,
+          "seed": 3470,
+          "rhat": 1.001420408257843,
+          "bulk": 3816.1349560637445,
+          "tail": 3568.701041339383,
+          "bfmi": 0.9744306224950678,
+          "rho": 0.04046876672312002
+        },
+        {
+          "replicate": 61,
+          "seed": 3471,
+          "rhat": 1.0027181216524996,
+          "bulk": 2187.346109465079,
+          "tail": 1567.9279266601861,
+          "bfmi": 0.8365412371555832,
+          "rho": 0.0724786982320051
+        },
+        {
+          "replicate": 62,
+          "seed": 3472,
+          "rhat": 1.0018720102305683,
+          "bulk": 4546.859916205356,
+          "tail": 3925.2480728203177,
+          "bfmi": 0.9680508719278713,
+          "rho": -0.2950785539133206
+        },
+        {
+          "replicate": 63,
+          "seed": 3473,
+          "rhat": 1.0014888915168865,
+          "bulk": 2601.1043194962253,
+          "tail": 1938.5747989216513,
+          "bfmi": 0.8986838185057239,
+          "rho": -0.749716563871715
+        },
+        {
+          "replicate": 64,
+          "seed": 3474,
+          "rhat": 1.00105752941026,
+          "bulk": 3902.859286291304,
+          "tail": 3563.6804786696234,
+          "bfmi": 0.9230507423334987,
+          "rho": -0.7283109635531327
+        },
+        {
+          "replicate": 65,
+          "seed": 3475,
+          "rhat": 1.0040722057852272,
+          "bulk": 1147.1412438387038,
+          "tail": 824.788914183659,
+          "bfmi": 0.6646517747972109,
+          "rho": -0.05980201949449052
+        },
+        {
+          "replicate": 66,
+          "seed": 3476,
+          "rhat": 1.0012368323904344,
+          "bulk": 4608.354418012368,
+          "tail": 3739.5471084119195,
+          "bfmi": 0.9850463771938226,
+          "rho": 0.20358905501776453
+        },
+        {
+          "replicate": 67,
+          "seed": 3477,
+          "rhat": 1.0014542130333288,
+          "bulk": 2609.027475395574,
+          "tail": 1766.3579463720778,
+          "bfmi": 0.8569800553973445,
+          "rho": -0.1314878736382194
+        },
+        {
+          "replicate": 68,
+          "seed": 3478,
+          "rhat": 1.0015381166069484,
+          "bulk": 4174.460397409721,
+          "tail": 3515.899775282151,
+          "bfmi": 0.9504155029471655,
+          "rho": 0.11774462004388792
+        },
+        {
+          "replicate": 69,
+          "seed": 3479,
+          "rhat": 1.0015930559947517,
+          "bulk": 4081.5196771853844,
+          "tail": 3502.261939289308,
+          "bfmi": 0.895287527605351,
+          "rho": 0.4405081417152311
+        },
+        {
+          "replicate": 70,
+          "seed": 3480,
+          "rhat": 1.001613654780898,
+          "bulk": 4905.366136154744,
+          "tail": 4026.526197215881,
+          "bfmi": 0.9165204358254616,
+          "rho": 0.18966349394657123
+        },
+        {
+          "replicate": 71,
+          "seed": 3481,
+          "rhat": 1.0017492535336103,
+          "bulk": 4907.22797669647,
+          "tail": 3797.520962251026,
+          "bfmi": 0.9916940340017139,
+          "rho": -0.35771650888122775
+        },
+        {
+          "replicate": 72,
+          "seed": 3482,
+          "rhat": 1.0017022764692258,
+          "bulk": 3639.3098277507816,
+          "tail": 3660.85647311576,
+          "bfmi": 0.9845097196169503,
+          "rho": -0.7338758208872291
+        },
+        {
+          "replicate": 73,
+          "seed": 3483,
+          "rhat": 1.0018794135684936,
+          "bulk": 4232.011627194493,
+          "tail": 3991.8175222872583,
+          "bfmi": 0.9391090173964487,
+          "rho": 0.10297541064293265
+        },
+        {
+          "replicate": 74,
+          "seed": 3484,
+          "rhat": 1.0014122897477222,
+          "bulk": 4411.917746604949,
+          "tail": 3705.4826953269044,
+          "bfmi": 0.8706629360562737,
+          "rho": -0.37575438049421206
+        },
+        {
+          "replicate": 75,
+          "seed": 3485,
+          "rhat": 1.0007011545264903,
+          "bulk": 4664.219642554847,
+          "tail": 4191.097684516361,
+          "bfmi": 0.8989520972354125,
+          "rho": -0.5235783946757415
+        },
+        {
+          "replicate": 76,
+          "seed": 3486,
+          "rhat": 1.0016877049483515,
+          "bulk": 2746.5804567959167,
+          "tail": 3209.499558324591,
+          "bfmi": 0.9546515125086349,
+          "rho": -0.6898628755191749
+        },
+        {
+          "replicate": 77,
+          "seed": 3487,
+          "rhat": 1.001830182277185,
+          "bulk": 4087.745817776074,
+          "tail": 3814.4414030969506,
+          "bfmi": 0.9336042636815272,
+          "rho": 0.009483621192540292
+        },
+        {
+          "replicate": 78,
+          "seed": 3488,
+          "rhat": 1.0021717597550936,
+          "bulk": 3342.079721567986,
+          "tail": 3081.899366239555,
+          "bfmi": 0.9686996231077023,
+          "rho": 0.7225837782964474
+        },
+        {
+          "replicate": 79,
+          "seed": 3489,
+          "rhat": 1.0015885521288788,
+          "bulk": 3976.5084279817197,
+          "tail": 3385.4399154439807,
+          "bfmi": 0.9443758493314169,
+          "rho": -0.1878939589312724
+        },
+        {
+          "replicate": 80,
+          "seed": 3490,
+          "rhat": 1.0028010544329395,
+          "bulk": 4194.9857524868185,
+          "tail": 3586.8382787226637,
+          "bfmi": 0.9220095100766178,
+          "rho": 0.6308301423117457
+        },
+        {
+          "replicate": 81,
+          "seed": 3491,
+          "rhat": 1.0011410516903405,
+          "bulk": 3861.6285766481715,
+          "tail": 3794.1591930447676,
+          "bfmi": 1.0345052575153766,
+          "rho": 0.6940949093546952
+        },
+        {
+          "replicate": 82,
+          "seed": 3492,
+          "rhat": 1.002776031575125,
+          "bulk": 1536.3967034892692,
+          "tail": 1135.1022697589383,
+          "bfmi": 0.8472957119999642,
+          "rho": -0.1295807998539407
+        },
+        {
+          "replicate": 83,
+          "seed": 3493,
+          "rhat": 1.0014371381451748,
+          "bulk": 3138.0055621507886,
+          "tail": 2766.184845043634,
+          "bfmi": 0.9039961503502778,
+          "rho": -0.17130284319376346
+        },
+        {
+          "replicate": 84,
+          "seed": 3494,
+          "rhat": 1.002426563256795,
+          "bulk": 3363.9101578287373,
+          "tail": 3153.2234847004665,
+          "bfmi": 0.9204695935243806,
+          "rho": 0.2829914738593527
+        },
+        {
+          "replicate": 85,
+          "seed": 3495,
+          "rhat": 1.001945441506747,
+          "bulk": 1873.830082742835,
+          "tail": 1382.2402033564692,
+          "bfmi": 0.8303328010656182,
+          "rho": 0.2061903745537861
+        },
+        {
+          "replicate": 86,
+          "seed": 3496,
+          "rhat": 1.0021088818970958,
+          "bulk": 1269.258274669683,
+          "tail": 1534.3712703813528,
+          "bfmi": 0.8877827784786652,
+          "rho": -0.9575357749714866
+        },
+        {
+          "replicate": 87,
+          "seed": 3497,
+          "rhat": 1.001679578169061,
+          "bulk": 4660.3051083304135,
+          "tail": 3677.3265565779648,
+          "bfmi": 0.925831616519506,
+          "rho": -0.7347779897867646
+        },
+        {
+          "replicate": 88,
+          "seed": 3498,
+          "rhat": 1.0015835186423114,
+          "bulk": 2782.3488112571567,
+          "tail": 2197.4723384079534,
+          "bfmi": 0.8279157661012085,
+          "rho": 0.7012403983978073
+        },
+        {
+          "replicate": 89,
+          "seed": 3499,
+          "rhat": 1.002076253562021,
+          "bulk": 3534.4396132471356,
+          "tail": 3334.5273319493567,
+          "bfmi": 0.9360270747436868,
+          "rho": -0.5736769045442675
+        },
+        {
+          "replicate": 90,
+          "seed": 3500,
+          "rhat": 1.0025656339202569,
+          "bulk": 4498.308498379445,
+          "tail": 3973.576186135041,
+          "bfmi": 0.9500566826993848,
+          "rho": -0.2579198050958189
+        },
+        {
+          "replicate": 91,
+          "seed": 3501,
+          "rhat": 1.001428590267546,
+          "bulk": 3157.0254594225034,
+          "tail": 3452.2740795751815,
+          "bfmi": 0.9686548214410703,
+          "rho": 0.3290873407636612
+        },
+        {
+          "replicate": 92,
+          "seed": 3502,
+          "rhat": 1.001792445976577,
+          "bulk": 4265.742447996325,
+          "tail": 3585.575775441173,
+          "bfmi": 0.9831628650905014,
+          "rho": 0.04229511789072384
+        },
+        {
+          "replicate": 93,
+          "seed": 3503,
+          "rhat": 1.00211359912773,
+          "bulk": 4181.563678778447,
+          "tail": 3658.8789971498536,
+          "bfmi": 0.991123888186744,
+          "rho": -0.6864256997565417
+        },
+        {
+          "replicate": 94,
+          "seed": 3504,
+          "rhat": 1.0006518145591823,
+          "bulk": 3535.7704437388475,
+          "tail": 3563.1026200258725,
+          "bfmi": 0.992746592040055,
+          "rho": 0.04779634021968793
+        },
+        {
+          "replicate": 95,
+          "seed": 3505,
+          "rhat": 1.0022383756916882,
+          "bulk": 3500.5831583244153,
+          "tail": 3325.966345404932,
+          "bfmi": 0.9495250290703905,
+          "rho": -0.40187057430851675
+        },
+        {
+          "replicate": 96,
+          "seed": 3506,
+          "rhat": 1.0013587901426924,
+          "bulk": 3381.7194001369407,
+          "tail": 3261.63753883799,
+          "bfmi": 0.8979675357975946,
+          "rho": 0.439117762897062
+        },
+        {
+          "replicate": 97,
+          "seed": 3507,
+          "rhat": 1.0025443324119956,
+          "bulk": 3298.6363459654094,
+          "tail": 3322.717242212237,
+          "bfmi": 0.9332800588147104,
+          "rho": 0.3720240338344437
+        },
+        {
+          "replicate": 98,
+          "seed": 3508,
+          "rhat": 1.0018509146248442,
+          "bulk": 2692.3759659262164,
+          "tail": 2850.282281901832,
+          "bfmi": 0.9369783672647913,
+          "rho": 0.44195067204962957
+        },
+        {
+          "replicate": 99,
+          "seed": 3509,
+          "rhat": 1.000753207896693,
+          "bulk": 4247.504360244786,
+          "tail": 3477.8910858829427,
+          "bfmi": 0.8708851788757064,
+          "rho": 0.7874136189388321
+        },
+        {
+          "replicate": 100,
+          "seed": 3510,
+          "rhat": 1.0011431374394657,
+          "bulk": 2059.635421487211,
+          "tail": 1631.9350837798358,
+          "bfmi": 0.8148063424290363,
+          "rho": -0.2551757253467519
+        }
+      ],
+      "artifact_download": {
+        "artifact_id": "12121543187",
+        "bytes": 3135172069,
+        "sha256": "f6205616fdb27d07ac99200f04467292a629ac4ab5e6686a5a461121f00a9984",
+        "download_seconds": 127.35588862496661
+      },
+      "selected_raw_draw_checks": [
+        {
+          "replicate": 1,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd": {
+              "rank_recomputed": 0.7382895560720445,
+              "hdi_94": [
+                0.3675120033484774,
+                0.6828247942237842
+              ],
+              "truth": 0.574793903033483
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.803529999528164,
+              "hdi_94": [
+                -0.7300882010468428,
+                0.10499955647104131
+              ],
+              "truth": -0.13488959784252347
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.5246274474888583,
+              "hdi_94": [
+                -5.14430676566373,
+                -4.665488025041174
+              ],
+              "truth": -4.92074220127107
+            }
+          }
+        },
+        {
+          "replicate": 50,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd": {
+              "rank_recomputed": 0.793724112835756,
+              "hdi_94": [
+                0.2022649735784336,
+                0.464822801026327
+              ],
+              "truth": 0.37135526436535526
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.508574935868903,
+              "hdi_94": [
+                -0.19913356077964073,
+                0.8805707739696502
+              ],
+              "truth": 0.4146346295219359
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.9305988175671056,
+              "hdi_94": [
+                -2.336820681928874,
+                -0.1357060780300701
+              ],
+              "truth": -0.3468505982578653
+            }
+          }
+        },
+        {
+          "replicate": 65,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd": {
+              "rank_recomputed": 0.20570679902499003,
+              "hdi_94": [
+                0.06442080761822255,
+                0.5870057603380548
+              ],
+              "truth": 0.19771359887694348
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.4534329876281533,
+              "hdi_94": [
+                -0.7665081747682163,
+                0.6046512297293989
+              ],
+              "truth": -0.05980201949449052
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.5515330417855538,
+              "hdi_94": [
+                -1.4779081791162922,
+                2.293774711365556
+              ],
+              "truth": 0.590609475393367
+            }
+          }
+        },
+        {
+          "replicate": 100,
+          "all_scalar_ranks_match": true,
+          "raw_divergences": 0,
+          "raw_max_depth_hits": 0,
+          "quantities": {
+            "effect_sd": {
+              "rank_recomputed": 0.4517233542785067,
+              "hdi_94": [
+                8.006696485717913e-06,
+                0.017995047317326512
+              ],
+              "truth": 0.006313620120323713
+            },
+            "effect_rho": {
+              "rank_recomputed": 0.28709307978725723,
+              "hdi_94": [
+                -0.7387026854387755,
+                0.8548568751069423
+              ],
+              "truth": -0.2551757253467519
+            },
+            "heldout_response": {
+              "rank_recomputed": 0.0716707997601047,
+              "hdi_94": [
+                -1.0540233426338814,
+                -0.754113314930454
+              ],
+              "truth": -1.0318152215100436
+            }
+          }
+        }
+      ],
+      "strict_reassessment": {
+        "passed": true,
+        "all_100_saved_posteriors_reassessed": true,
+        "ranks_and_coverage_identical": true,
+        "maximum_interval_roundoff_difference": 1.9240165016753963e-13,
+        "maximum_rank_p_roundoff_difference": 1.0824674490095276e-15,
+        "wall_seconds": 21.87,
+        "peak_rss_bytes": 305233920,
+        "swaps": 0,
+        "command": ".venv/bin/python bambi/examples/structured_covariance_validation.py calibration .cache/structured-ci/bambi-39076990474/calibration-cs_homogeneous --replicates 100 --output .cache/structured-ci/bambi-39076990474/calibration-cs_homogeneous/strict-assessment",
+        "versions": {
+          "numpy": "2.2.6",
+          "scipy": "1.15.3",
+          "arviz_stats": "1.3.3",
+          "xarray": "2026.9.0"
+        }
+      },
+      "metadata_and_all_raw_stat_inspection_resources": {
+        "wall_seconds": 4.81,
+        "peak_rss_bytes": 211353600,
+        "swaps": 0
+      },
+      "selected_raw_inspection_resources": {
+        "wall_seconds": 2.81,
+        "peak_rss_bytes": 223641600,
+        "swaps": 0,
+        "shared_across_both_families": true,
+        "selected_replications_total": 9
+      },
+      "corrected_csv_resources": {
+        "wall_seconds": 40.02,
+        "peak_rss_bytes": 271433728,
+        "swaps": 0,
+        "shared_across_both_families": true,
+        "files_total": 200,
+        "originals_preserved": true,
+        "replicate_1_group0_slope_mean_hdi_checked_per_family": true
+      },
+      "provenance": {
+        "run": 39076990474,
+        "production_commit": "205730c26d59bebfbc132fde85559792887e32fc",
+        "ci_merge_commit": "caa8db78a5c7e5a7b176c597e98629f49f724370",
+        "complete_bambi_diff_against_production_commit_empty": true,
+        "formulae_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+        "archived_source_target_accept": 0.97,
+        "native_nutpie_depth_flags_inspected": true,
+        "note": "Archived command JSON predates explicit target_accept/max-depth fields; target acceptance comes from exact archived source. Native depth flags and sampler versions remain saved."
+      },
+      "independent_review": "Fresh read-only Sol High reviewer independently inspected requirements, actual CS prior/generator/covariance/Woodbury/recovery/prediction/calibration source and all100 compact metadata/diagnostic/CSV records per family. Gate flags checked against numbers; no missing/failed fit or concrete CS implementation defect. Reviewer did not execute checks or load raw arrays; lead owns raw/strict reassessments.",
+      "limits": "Scalar prior-averaged marginal-nutpie calibration for2D intercept/slope design, with one existing-group heldout slope atx1.5.100 replications and simultaneous correction yield wide coverage intervals; thinned MCMC ranks approximate independent ranks. No separate joint coefficient, new-group, latent/composition, other-sampler or rho-region-conditional calibration claim.",
+      "resource_measurement_recheck": "A3.4-second overlap between two artifact checks was caught; both were rerun sequentially. Original overlapped logs retained; reported measurements use sequential reruns."
     }
   },
   "validation_completeness_fix": {
@@ -16401,23 +18735,270 @@
     }
   },
   "latest_validation_repair_runs": {
-    "commit": "a0a70ed3671df65251d0065c864a0dd12301612c",
-    "bounded_run": 39083942362,
-    "regression_run": 39083942381,
+    "commit": "0f414ce0ad5b9e5004328f7c1debaf64607263ad",
+    "bounded_run": 39085632629,
+    "regression_run": 39085632613,
+    "bounded_and_broader_conclusion": "success",
     "benchmark_only_run": 39081915902,
     "benchmark_experiment_commit": "76843fbcf78b273f8e7f9e4154ac5f2500b55f32",
     "extended_run_unchanged": 39076990474,
-    "previous_bounded_and_regression_passed": [
-      39081913652,
-      39081913653
-    ],
     "calibration_verified": [
       "ar1",
-      "ou"
+      "ou",
+      "diag",
+      "cs",
+      "cs_homogeneous"
     ],
-    "next_work": "Inspect remaining5 calibration cases and controlled benchmarks; inspect new complete-diagnostics bounded/regression runs. Preserve failed original benchmarks."
+    "pending_scientific_checks": [
+      "US/3D US calibration",
+      "controlled representative benchmarks"
+    ]
   },
-  "latest_posterior_inspection": {
+  "diagnostic_guard_repair": {
+    "status": "Verified in completed bounded39083942362 and broader39083942381; complete latest summary-fix CI also passes.",
+    "max_treedepth": 10,
+    "sampler_keywords": {
+      "pymc": "max_treedepth",
+      "nutpie": "max_treedepth (PyMC maps to maxdepth)",
+      "numpyro": "max_tree_depth",
+      "blackjax": "max_num_doublings"
+    },
+    "native_flags_preserved": true,
+    "jax_fallback": "tree_depth >=10 conservatively marks depth-limit saturation",
+    "requires_finite_stats": [
+      "diverging",
+      "energy",
+      "reached_max_treedepth"
+    ],
+    "requires_finite_bfmi": true,
+    "focused_tests_passed": 36,
+    "additional_tests": 12,
+    "total_distinct_focused_bambi_tests": 188,
+    "tests_wall_seconds": 3.88,
+    "tests_peak_rss_bytes": 281706496,
+    "swaps": 0,
+    "pylint": "10.00/10",
+    "black": "passes",
+    "routing_probes": {
+      "pymc": {
+        "configuration": {
+          "seed": 4515,
+          "structure": "ar1",
+          "method": "marginal",
+          "groups": 2,
+          "draws": 4,
+          "tune": 4,
+          "chains": 1,
+          "sampler": "pymc",
+          "prior_draw": false,
+          "prior_scale": 1,
+          "composition": false,
+          "target_accept": 0.97,
+          "max_treedepth": 10
+        },
+        "execution_completed": true,
+        "diagnostic_depth_present": true,
+        "statistical_acceptance": false,
+        "resources": {
+          "wall_seconds": 6.49,
+          "peak_rss_bytes": 401489920,
+          "swaps": 0
+        }
+      },
+      "nutpie": {
+        "configuration": {
+          "seed": 4515,
+          "structure": "ar1",
+          "method": "marginal",
+          "groups": 2,
+          "draws": 4,
+          "tune": 4,
+          "chains": 1,
+          "sampler": "nutpie",
+          "prior_draw": false,
+          "prior_scale": 1,
+          "composition": false,
+          "target_accept": 0.97,
+          "max_treedepth": 10
+        },
+        "execution_completed": true,
+        "diagnostic_depth_present": true,
+        "statistical_acceptance": false,
+        "resources": {
+          "wall_seconds": 10.46,
+          "peak_rss_bytes": 428998656,
+          "swaps": 0
+        }
+      },
+      "numpyro": {
+        "configuration": {
+          "seed": 4515,
+          "structure": "ar1",
+          "method": "marginal",
+          "groups": 2,
+          "draws": 4,
+          "tune": 4,
+          "chains": 1,
+          "sampler": "numpyro",
+          "prior_draw": false,
+          "prior_scale": 1,
+          "composition": false,
+          "target_accept": 0.97,
+          "max_treedepth": 10
+        },
+        "execution_completed": true,
+        "diagnostic_depth_present": true,
+        "statistical_acceptance": false,
+        "resources": {
+          "wall_seconds": 9.57,
+          "peak_rss_bytes": 640778240,
+          "swaps": 0
+        }
+      },
+      "blackjax": {
+        "configuration": {
+          "seed": 4515,
+          "structure": "ar1",
+          "method": "marginal",
+          "groups": 2,
+          "draws": 4,
+          "tune": 4,
+          "chains": 1,
+          "sampler": "blackjax",
+          "prior_draw": false,
+          "prior_scale": 1,
+          "composition": false,
+          "target_accept": 0.97,
+          "max_treedepth": 10
+        },
+        "execution_completed": true,
+        "diagnostic_depth_present": true,
+        "statistical_acceptance": false,
+        "resources": {
+          "wall_seconds": 8.69,
+          "peak_rss_bytes": 642957312,
+          "swaps": 0
+        }
+      }
+    },
+    "independent_review": "Fresh read-only Sol High reviewer inspected requirements, actual scripts/tests, installed PyMC/JAX/ArviZ source and raw JAX stats. No blocking defect in repair. No tests/samplers/edits by reviewer.",
+    "jax_chain_execution": "cores=1 does not control JAX chain method. Local JAX probes use one chain; CI JAX runs default parallel execution. PyMC/nutpie validation chains are serial.",
+    "production_covariance_code_changed": false,
+    "commit": "a0a70ed3671df65251d0065c864a0dd12301612c",
+    "bounded_run": 39083942362,
+    "regression_run": 39083942381
+  },
+  "summary_reporting_repair": {
+    "bug_report": "docs/development/arviz-summary-order-bug-report.md",
+    "affected": "ArviZ wide CSV coefficient coordinate labels; raw draws/ranks/coverage and diagnostic extrema unaffected",
+    "behavior": "Build unrounded summary CSV from labelled xarray summaries in each variable dimension order",
+    "reproduction": {
+      "versions": {
+        "arviz_stats": "1.3.3",
+        "arviz_base": "1.3.1",
+        "xarray": "2026.9.0",
+        "pandas": "2.3.3"
+      },
+      "direct_mean": 1.0001543795385237,
+      "native_wide_mean": 10.000345688042609,
+      "corrected_mean": 1.0001543795385237,
+      "diagonal_replicate_1": {
+        "label": "effect[(('str', 'g000'),), x]",
+        "direct_mean": -0.01875536312969471,
+        "corrected_mean": -0.01875536312969471
+      },
+      "corrected_csv_files": 122,
+      "original_csv_files_preserved": true
+    },
+    "validation_tests": 37,
+    "distinct_focused_bambi_tests": 189,
+    "test_resources": {
+      "wall_seconds": 4.04,
+      "peak_rss_bytes": 284000256,
+      "swaps": 0
+    },
+    "corrected_csv_resources": {
+      "files": 122,
+      "wall_seconds": 26.54,
+      "peak_rss_bytes": 376995840,
+      "swaps": 0,
+      "originals_preserved": true
+    },
+    "black": "passed",
+    "serial_pylint": "10.00/10",
+    "independent_review": "Fresh read-only Sol High reviewer independently checked actual formatter, regression and raw-coordinate evidence; no blocking defect.",
+    "ci_verification": {
+      "bounded_run": 39085632629,
+      "broader_run": 39085632613,
+      "all_jobs_passed": true,
+      "independent_coordinate_rows_checked": 1200,
+      "raw_draws_checked": 176000
+    }
+  },
+  "latest_summary_fix_scientific_verification": {
+    "run": 39085632629,
+    "commit": "0f414ce0ad5b9e5004328f7c1debaf64607263ad",
+    "totals": {
+      "fits": 22,
+      "draws": 176000,
+      "zero_divergences_and_depth_hits": true,
+      "rhat_max": 1.0083927679190283,
+      "ess_bulk_min": 1086.873456032358,
+      "ess_tail_min": 1534.85812985713,
+      "bfmi_min": 0.34156628037224973,
+      "direct_coordinate_summary_rows_checked": 1200
+    },
+    "all_required_comparison_types_present": true,
+    "all_covariance_state_and_prediction_moment_comparisons_pass": true,
+    "coordinate_csv_verified_against_raw_means_and_94_hdis": true,
+    "inspection_resources": {
+      "wall_seconds": 4.64,
+      "peak_rss_bytes": 242860032,
+      "swaps": 0
+    },
+    "download_resources": {
+      "wall_seconds": 75.47,
+      "peak_rss_bytes": 42057728,
+      "swaps": 0
+    },
+    "raw_and_all_failure_records_retained": true
+  },
+  "calibration_finite_stat_reassessment": {
+    "families": [
+      "ar1",
+      "ou",
+      "diag"
+    ],
+    "fits": 300,
+    "all_raw_energy_and_divergence_depth_flags_finite": true,
+    "all_recomputed_bfmi_finite": true,
+    "bfmi_values_per_fit": 4,
+    "zero_divergences_and_depth_hits": true,
+    "minimum_bfmi": {
+      "ar1": 0.5670044072392983,
+      "ou": 0.7326624919942668,
+      "diag": 0.741165557736152
+    },
+    "wall_seconds": 9.02,
+    "peak_rss_bytes": 214073344,
+    "swaps": 0
+  },
+  "completed_calibration_raw_statistics": {
+    "families": [
+      "ar1",
+      "ou",
+      "diag",
+      "cs",
+      "cs_homogeneous"
+    ],
+    "fits": 500,
+    "retained_draws": 3000000,
+    "all_sample_energy_divergence_depth_values_finite": true,
+    "all_fits_have_four_finite_recomputed_bfmi": true,
+    "zero_divergences_and_depth_hits": true,
+    "resources_and_raw_results": "Per-family calibration records and retained inspection logs"
+  },
+  "diagnostic_guard_discovery_inspection": {
     "run": 39081913652,
     "commit": "76843fbcf78b273f8e7f9e4154ac5f2500b55f32",
     "passed_after_explicit_raw_stat_review": true,
@@ -19092,178 +21673,83 @@
       "swaps": 0
     }
   },
-  "diagnostic_guard_repair": {
-    "status": "committed/pushed; local checks and independent review pass; CI queued/running",
-    "max_treedepth": 10,
-    "sampler_keywords": {
-      "pymc": "max_treedepth",
-      "nutpie": "max_treedepth (PyMC maps to maxdepth)",
-      "numpyro": "max_tree_depth",
-      "blackjax": "max_num_doublings"
+  "latest_posterior_inspection": {
+    "run": 39085632629,
+    "commit": "0f414ce0ad5b9e5004328f7c1debaf64607263ad",
+    "totals": {
+      "fits": 22,
+      "draws": 176000,
+      "zero_divergences_and_depth_hits": true,
+      "rhat_max": 1.0083927679190283,
+      "ess_bulk_min": 1086.873456032358,
+      "ess_tail_min": 1534.85812985713,
+      "bfmi_min": 0.34156628037224973,
+      "direct_coordinate_summary_rows_checked": 1200
     },
-    "native_flags_preserved": true,
-    "jax_fallback": "tree_depth >=10 conservatively marks depth-limit saturation",
-    "requires_finite_stats": [
-      "diverging",
-      "energy",
-      "reached_max_treedepth"
-    ],
-    "requires_finite_bfmi": true,
-    "focused_tests_passed": 36,
-    "additional_tests": 12,
-    "total_distinct_focused_bambi_tests": 188,
-    "tests_wall_seconds": 3.88,
-    "tests_peak_rss_bytes": 281706496,
-    "swaps": 0,
-    "pylint": "10.00/10",
-    "black": "passes",
-    "routing_probes": {
-      "pymc": {
-        "configuration": {
-          "seed": 4515,
-          "structure": "ar1",
-          "method": "marginal",
-          "groups": 2,
-          "draws": 4,
-          "tune": 4,
-          "chains": 1,
-          "sampler": "pymc",
-          "prior_draw": false,
-          "prior_scale": 1,
-          "composition": false,
-          "target_accept": 0.97,
-          "max_treedepth": 10
-        },
-        "execution_completed": true,
-        "diagnostic_depth_present": true,
-        "statistical_acceptance": false,
-        "resources": {
-          "wall_seconds": 6.49,
-          "peak_rss_bytes": 401489920,
-          "swaps": 0
-        }
-      },
-      "nutpie": {
-        "configuration": {
-          "seed": 4515,
-          "structure": "ar1",
-          "method": "marginal",
-          "groups": 2,
-          "draws": 4,
-          "tune": 4,
-          "chains": 1,
-          "sampler": "nutpie",
-          "prior_draw": false,
-          "prior_scale": 1,
-          "composition": false,
-          "target_accept": 0.97,
-          "max_treedepth": 10
-        },
-        "execution_completed": true,
-        "diagnostic_depth_present": true,
-        "statistical_acceptance": false,
-        "resources": {
-          "wall_seconds": 10.46,
-          "peak_rss_bytes": 428998656,
-          "swaps": 0
-        }
-      },
-      "numpyro": {
-        "configuration": {
-          "seed": 4515,
-          "structure": "ar1",
-          "method": "marginal",
-          "groups": 2,
-          "draws": 4,
-          "tune": 4,
-          "chains": 1,
-          "sampler": "numpyro",
-          "prior_draw": false,
-          "prior_scale": 1,
-          "composition": false,
-          "target_accept": 0.97,
-          "max_treedepth": 10
-        },
-        "execution_completed": true,
-        "diagnostic_depth_present": true,
-        "statistical_acceptance": false,
-        "resources": {
-          "wall_seconds": 9.57,
-          "peak_rss_bytes": 640778240,
-          "swaps": 0
-        }
-      },
-      "blackjax": {
-        "configuration": {
-          "seed": 4515,
-          "structure": "ar1",
-          "method": "marginal",
-          "groups": 2,
-          "draws": 4,
-          "tune": 4,
-          "chains": 1,
-          "sampler": "blackjax",
-          "prior_draw": false,
-          "prior_scale": 1,
-          "composition": false,
-          "target_accept": 0.97,
-          "max_treedepth": 10
-        },
-        "execution_completed": true,
-        "diagnostic_depth_present": true,
-        "statistical_acceptance": false,
-        "resources": {
-          "wall_seconds": 8.69,
-          "peak_rss_bytes": 642957312,
-          "swaps": 0
-        }
-      }
-    },
-    "independent_review": "Fresh read-only Sol High reviewer inspected requirements, actual scripts/tests, installed PyMC/JAX/ArviZ source and raw JAX stats. No blocking defect in repair. No tests/samplers/edits by reviewer.",
-    "jax_chain_execution": "cores=1 does not control JAX chain method. Local JAX probes use one chain; CI JAX runs default parallel execution. PyMC/nutpie validation chains are serial.",
-    "production_covariance_code_changed": false,
-    "commit": "a0a70ed3671df65251d0065c864a0dd12301612c",
-    "bounded_run": 39083942362,
-    "regression_run": 39083942381
-  },
-  "summary_reporting_repair": {
-    "bug_report": "docs/development/arviz-summary-order-bug-report.md",
-    "affected": "ArviZ wide CSV coefficient coordinate labels; raw draws/ranks/coverage and diagnostic extrema unaffected",
-    "behavior": "Build unrounded summary CSV from labelled xarray summaries in each variable dimension order",
-    "reproduction": {
-      "versions": {
-        "arviz_stats": "1.3.3",
-        "arviz_base": "1.3.1",
-        "xarray": "2026.9.0",
-        "pandas": "2.3.3"
-      },
-      "direct_mean": 1.0001543795385237,
-      "native_wide_mean": 10.000345688042609,
-      "corrected_mean": 1.0001543795385237,
-      "diagonal_replicate_1": {
-        "label": "effect[(('str', 'g000'),), x]",
-        "direct_mean": -0.01875536312969471,
-        "corrected_mean": -0.01875536312969471
-      },
-      "corrected_csv_files": 122,
-      "original_csv_files_preserved": true
-    },
-    "validation_tests": 37,
-    "distinct_focused_bambi_tests": 189,
-    "test_resources": {
-      "wall_seconds": 4.04,
-      "peak_rss_bytes": 284000256,
+    "all_required_comparison_types_present": true,
+    "all_covariance_state_and_prediction_moment_comparisons_pass": true,
+    "coordinate_csv_verified_against_raw_means_and_94_hdis": true,
+    "inspection_resources": {
+      "wall_seconds": 4.64,
+      "peak_rss_bytes": 242860032,
       "swaps": 0
     },
-    "corrected_csv_resources": {
-      "files": 122,
-      "wall_seconds": 26.54,
-      "peak_rss_bytes": 376995840,
-      "swaps": 0,
-      "originals_preserved": true
+    "download_resources": {
+      "wall_seconds": 75.47,
+      "peak_rss_bytes": 42057728,
+      "swaps": 0
     },
-    "black": "passed",
-    "serial_pylint": "10.00/10",
-    "independent_review": "Fresh read-only Sol High reviewer independently checked actual formatter, regression and raw-coordinate evidence; no blocking defect."
+    "raw_and_all_failure_records_retained": true
+  },
+  "function_call_scope_revision": {
+    "supported_interface": "wrapper(design_or_coordinate, by=group)",
+    "wrappers": [
+      "ar1",
+      "ou",
+      "cs",
+      "diag",
+      "us"
+    ],
+    "structured_inner_bar_supported": false,
+    "ordinary_group_terms_preserved": true,
+    "positional_group_argument_supported": false,
+    "composite_and_nested_by_preserved": true,
+    "statistical_target": "Latent Gaussian effects in parent/auxiliary linear predictors; Gaussian observation noise conditionally independent",
+    "residual_covariance_component_added": false,
+    "maintainer_alignment": "Latent-effect versus residual scope still pending; no settled approval claimed",
+    "joint_marginalization_scope": "At most one eligible structured term; remaining effects sampled and selected states jointly recovered",
+    "general_gaussian_engine_or_sparse_framework_added": false,
+    "formulae_dependency_still_required": true,
+    "formulae_commit": "66826353b8faff477597fb477682ddcb37e3c314",
+    "prior_formulae_statistical_artifact_commit": "2fbeb11d89a67db2700557872896dea0b5c5d9ab",
+    "canonical_name_defects_fixed": [
+      "Quoted predictor versus multi-term formula identity",
+      "Quoted group matching a Python literal",
+      "Lazy-call quoting and arithmetic grouping identity"
+    ],
+    "formulae_focused_tests": 179,
+    "formulae_test_resources": {
+      "wall_seconds": 2.1,
+      "peak_rss_bytes": 136462336,
+      "swaps": 0
+    },
+    "bambi_interface_tests": 16,
+    "bambi_test_resources": {
+      "wall_seconds": 4.99,
+      "peak_rss_bytes": 298287104,
+      "swaps": 0
+    },
+    "existing_bambi_formula_tests": 6,
+    "bambi_formula_test_resources": {
+      "wall_seconds": 3.95,
+      "peak_rss_bytes": 257409024,
+      "swaps": 0
+    },
+    "independent_review": "Fresh read-only Sol High reviewer inspected actual narrowed requirements and complete Formulae diff, identified naming defects, then confirmed both repairs closed. No tests/edits by reviewer.",
+    "pylint": "10.00/10, serial, changed Formulae module",
+    "black": "Checks pass under each repository configuration",
+    "production_covariance_or_inference_code_changed": false,
+    "historical_statistical_runs_preserved": true,
+    "latest_ci": "Revalidation pending after exact-pin push"
   }
 }

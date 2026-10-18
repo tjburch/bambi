@@ -8,25 +8,23 @@ The task spans Bambi and Formulae. The deliverables are focused implementation c
 
 Add `ar1`, `ou`, `cs`, `diag`, and `us` as native Bambi structured Gaussian effects.
 
-Both public forms are required:
+Use the function-call interface with `by=` grouping:
 
 ~~~python
-ar1(0 + season | player)
 ar1(season, by=player)
 
 ar1(season, by=["player", "pitcher_hand"])
-ar1(0 + season | player:pitcher_hand)
 
-us(1 + x | player)
 us(1 + x, by=player)
 
-us(0 + C(visit) | patient)
 us(0 + C(visit), by=patient)
 ~~~
 
-`us`, `diag`, and `cs` accept ordinary coefficient designs in both syntaxes, including implicit intercepts. AR(1)/OU accept coordinates. CS is heterogeneous by default and also accepts `homogeneous=True`.
+`us`, `diag`, and `cs` accept ordinary coefficient designs with implicit intercepts. AR(1)/OU accept coordinates. CS is heterogeneous by default and also accepts `homogeneous=True`.
 
-Use a supported Formulae interface for structured expressions, grouping lists, and `/` expansion. Implement the needed tandem Formulae change. Preserve Formulae's ordinary decisions and semantics.
+Use a supported Formulae interface for structured expressions, grouping lists, and `/` expansion. Inspect each remaining Formulae change and keep the focused tandem change only where the function-call API needs it. Grouping uses `by=`; do not add a second positional grouping API or support inner group-specific expressions. Preserve ordinary group-specific terms such as `(1 + x | group)`, ordinary calls, and arithmetic. Do not replace Formulae changes with string parsing or Bambi-specific parser workarounds.
+
+These wrappers describe covariance among latent Gaussian effects in the linear predictor. Gaussian observation noise remains conditionally independent. A separate residual-covariance component is outside this PR. Maintainer alignment on this distinction remains pending; do not describe the discussion as settled approval.
 
 Support multiple additive structured effects, ordinary random effects, HSGPs, and auxiliary parameter formulas. In Gaussian models, integrate out at most one eligible structured term while sampling all remaining effects. Do not treat extra crossed effects as a reason to reject otherwise valid partial marginalization.
 
@@ -39,6 +37,8 @@ model.fit(
     marginalize="ar1(season, by=player)",
 )
 ~~~
+
+Integrate at most one eligible term and recover its states jointly. Broader joint Gaussian marginalization and coordination with its prototypes remain future work; do not add a general engine, sparse solver framework, or experimental dependency.
 
 Automatic selection is deterministic and reported. Explicit selection must be honored or rejected clearly. All four NUTS backends are required: PyMC, nutpie, NumPyro, and BlackJAX. Support both latent and eligible marginal inference on each.
 
